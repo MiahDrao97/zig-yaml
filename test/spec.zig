@@ -582,7 +582,7 @@ const expect_file_template =
     \\    const expected = try loadFileString("{s}");
     \\    defer alloc.free(expected);
     \\
-    \\    var buf: Io.Writer.Allocating = .init(alloc);
+    \\    var buf: std.Io.Writer.Allocating = .init(alloc);
     \\    defer buf.deinit();
     \\    try yaml.stringify(&buf.writer);
     \\    const actual = try buf.toOwnedSlice();
