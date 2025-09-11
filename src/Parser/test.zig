@@ -891,6 +891,18 @@ test "mixed ints with floats in a list" {
     );
 }
 
+test "field with apostrophe" {
+    try parseSuccess(
+        \\field: This shouldn't break
+    );
+}
+
+test "field containing double quotes" {
+    try parseSuccess(
+        \\field: this doesn't make sense, but there's a random " in here
+    );
+}
+
 test "expect end of document" {
     try parseError2(
         \\  key1: value1
