@@ -1,6 +1,8 @@
 # zig-yaml
 
-YAML parser for Zig
+YAML parser for Zig:
+
+Forked from https://github.com/kubkon/zig-yaml
 
 ## What is it?
 
@@ -16,12 +18,12 @@ issues.
 
 The library can be installed using the Zig tools. First, you need to fetch the required release of the library into your project. 
 ```
-zig fetch --save https://github.com/kubkon/zig-yaml/archive/refs/tags/[RELEASE_VERSION].tar.gz
+zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
 ```
 
 It's more convenient to save the library with a desired name, for example, like this (assuming you are targeting latest release of Zig):
 ```
-zig fetch --save=yaml https://github.com/kubkon/zig-yaml/archive/refs/tags/0.1.1.tar.gz
+zig fetch --save=yaml https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
 ```
 
 And then add those lines to your project's `build.zig` file:
