@@ -729,7 +729,7 @@ fn testStringify(expected: []const u8, input: anytype) !void {
     defer writer.deinit();
 
     try stringify(testing.allocator, input, &writer.writer);
-    try testing.expectEqualStrings(expected, writer.getWritten());
+    try testing.expectEqualStrings(expected, writer.written());
 }
 
 test "stringify an int" {
