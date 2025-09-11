@@ -634,7 +634,7 @@ fn parseError2(source: []const u8, comptime format: []const u8, args: anytype) !
 
     const expected = try std.fmt.allocPrint(testing.allocator, format, args);
     defer testing.allocator.free(expected);
-    try testing.expectEqualStrings(expected, given.getWritten());
+    try testing.expectEqualStrings(expected, given.written());
 }
 
 test "empty doc with spaces and comments" {
