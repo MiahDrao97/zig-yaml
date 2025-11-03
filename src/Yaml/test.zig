@@ -973,3 +973,25 @@ test "parse struct as list of structs" {
     const parsed = try yaml.parse(arena.allocator(), Struct);
     try testing.expectEqualDeep(Struct{ .a = 1 }, parsed);
 }
+
+test "duplicate key error" {
+    // we get a double-free if the duplicate keys are nested deep enough
+    const source =
+        \\components:
+        \\  schemas:
+        \\    Obj:
+        \\      type: object
+        \\      description: asdf
+        \\      properties:
+        \\        MyProp:
+        \\          type: string
+        \\          description: blarf
+        \\        MyProp:
+        \\          type: string
+        \\          description: oh my
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try testing.expectError(error.DuplicateMapKey, yaml.load(testing.allocator));
+}
