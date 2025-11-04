@@ -62,7 +62,9 @@ test "simple" {
 
     var parsed = try loadFromFile(&arena, "test/simple.yaml");
 
-    const result = try parsed.parse(arena.allocator(), Simple);
+    const result = try parsed.parse(testing.allocator, Simple);
+    defer result.deinit();
+
     const expected = Simple{
         .names = &[_][]const u8{ "John Doe", "MacIntosh", "Jane Austin" },
         .numbers = &[_]i16{ 10, -8, 6 },
@@ -75,7 +77,7 @@ test "simple" {
         .hasBoolean = false,
         .finally = [_]f16{ 8.17, 19.78, 17, 21 },
     };
-    try testing.expect(result.eql(expected));
+    try testing.expect(result.value.eql(expected));
 }
 
 const LibTbd = struct {
@@ -193,6 +195,8 @@ test "single lib tbd" {
     var parsed = try loadFromFile(&arena, "test/single_lib.tbd");
 
     const result = try parsed.parse(arena.allocator(), LibTbd);
+    defer result.deinit();
+
     const expected = LibTbd{
         .tbd_version = 4,
         .targets = &[_][]const u8{
@@ -258,7 +262,7 @@ test "single lib tbd" {
         },
         .parent_umbrella = null,
     };
-    try testing.expect(result.eql(expected));
+    try testing.expect(result.value.eql(expected));
 }
 
 test "multi lib tbd" {
@@ -319,7 +323,7 @@ test "multi lib tbd" {
         },
     };
 
-    for (result, 0..) |lib, i| {
+    for (result.value, 0..) |lib, i| {
         try testing.expect(lib.eql(expected[i]));
     }
 }

@@ -20,23 +20,12 @@ docs: std.ArrayListUnmanaged(Value) = .empty,
 tree: ?Tree = null,
 parse_errors: ErrorBundle = .empty,
 
-pub fn deinit(self: *Yaml, gpa: Allocator) void {
-    for (self.docs.items) |*value| {
-        value.deinit(gpa);
-    }
-    self.docs.deinit(gpa);
-    if (self.tree) |*tree| {
-        tree.deinit(gpa);
-    }
-    self.parse_errors.deinit(gpa);
-    self.* = undefined;
-}
-
+/// No `deinit()` is defined on `Yaml`; that memory is owned by whichever arena you pass in
 pub fn load(self: *Yaml, arena: *ArenaAllocator) !void {
-    const gpa: Allocator = arena.allocator();
-    var parser = try Parser.init(gpa, self.source);
+    const allocator: Allocator = arena.allocator();
+    var parser = try Parser.init(allocator, self.source);
 
-    parser.parse(gpa) catch |err| switch (err) {
+    parser.parse(allocator) catch |err| switch (err) {
         error.ParseFailure => {
             self.parse_errors = try parser.errors.toOwnedBundle("");
             return error.ParseFailure;
@@ -44,49 +33,61 @@ pub fn load(self: *Yaml, arena: *ArenaAllocator) !void {
         else => return err,
     };
 
-    self.tree = try parser.toOwnedTree(gpa);
+    self.tree = try parser.toOwnedTree(allocator);
 
-    try self.docs.ensureTotalCapacityPrecise(gpa, self.tree.?.docs.len);
+    try self.docs.ensureTotalCapacityPrecise(allocator, self.tree.?.docs.len);
 
     for (self.tree.?.docs) |node| {
-        const value = try Value.fromNode(gpa, self.tree.?, node);
+        const value = try Value.fromNode(allocator, self.tree.?, node);
         self.docs.appendAssumeCapacity(value);
     }
 }
 
-pub fn parse(self: Yaml, arena: Allocator, comptime T: type) Error!T {
-    if (self.docs.items.len == 0) {
-        if (@typeInfo(T) == .void) return {};
-        return error.TypeMismatch;
-    }
+/// Create a managed value of type `T`.
+/// All memory allocated to create the value is contained within the managed value and can be freed with a `deinit()` call.
+pub fn parse(self: Yaml, gpa: Allocator, comptime T: type) Error!Managed(T) {
+    const ParseInner = struct {
+        yaml: Yaml,
 
-    if (self.docs.items.len == 1) {
-        return self.parseValue(arena, T, self.docs.items[0]);
-    }
-
-    switch (@typeInfo(T)) {
-        .array => |info| {
-            var parsed: T = undefined;
-            for (self.docs.items, 0..) |doc, i| {
-                parsed[i] = try self.parseValue(arena, info.child, doc);
+        fn parseInner(this: @This(), arena: Allocator) Error!T {
+            if (this.yaml.docs.items.len == 0) {
+                if (@typeInfo(T) == .void) return {};
+                return error.TypeMismatch;
             }
-            return parsed;
-        },
-        .pointer => |info| {
-            switch (info.size) {
-                .slice => {
-                    var parsed = try arena.alloc(info.child, self.docs.items.len);
-                    for (self.docs.items, 0..) |doc, i| {
-                        parsed[i] = try self.parseValue(arena, info.child, doc);
+
+            if (this.yaml.docs.items.len == 1) {
+                return this.yaml.parseValue(arena, T, this.yaml.docs.items[0]);
+            }
+
+            switch (@typeInfo(T)) {
+                .array => |info| {
+                    var parsed: T = undefined;
+                    for (this.yaml.docs.items, 0..) |doc, i| {
+                        parsed[i] = try this.yaml.parseValue(arena, info.child, doc);
                     }
                     return parsed;
                 },
+                .pointer => |info| {
+                    switch (info.size) {
+                        .slice => {
+                            var parsed = try arena.alloc(info.child, this.yaml.docs.items.len);
+                            for (this.yaml.docs.items, 0..) |doc, i| {
+                                parsed[i] = try this.yaml.parseValue(arena, info.child, doc);
+                            }
+                            return parsed;
+                        },
+                        else => return error.TypeMismatch,
+                    }
+                },
+                .@"union" => return error.Unimplemented,
                 else => return error.TypeMismatch,
             }
-        },
-        .@"union" => return error.Unimplemented,
-        else => return error.TypeMismatch,
-    }
+        }
+    };
+
+    var value: Managed(T) = undefined;
+    const ctx: ParseInner = .{ .yaml = self };
+    return value.create(gpa, ctx, ParseInner.parseInner) catch |err| @errorCast(err);
 }
 
 fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Error!T {
@@ -642,6 +643,8 @@ pub const ErrorMsg = struct {
         gpa.free(err.msg);
     }
 };
+
+pub const Managed = @import("zutil").Managed;
 
 test {
     _ = @import("Yaml/test.zig");
