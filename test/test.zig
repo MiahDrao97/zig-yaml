@@ -8,16 +8,15 @@ const Yaml = @import("yaml").Yaml;
 
 const gpa = testing.allocator;
 
-fn loadFromFile(file_path: []const u8) !Yaml {
+fn loadFromFile(arena: *Arena, file_path: []const u8) !Yaml {
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
-    const source = try file.readToEndAlloc(gpa, std.math.maxInt(u32));
-    defer gpa.free(source);
+    const source = try file.readToEndAlloc(arena.allocator(), std.math.maxInt(u32));
 
     var yaml: Yaml = .{ .source = source };
-    errdefer yaml.deinit(gpa);
-    try yaml.load(gpa);
+    try yaml.load(arena);
+
     return yaml;
 }
 
@@ -58,11 +57,10 @@ test "simple" {
         }
     };
 
-    var parsed = try loadFromFile("test/simple.yaml");
-    defer parsed.deinit(gpa);
-
     var arena = Arena.init(gpa);
     defer arena.deinit();
+
+    var parsed = try loadFromFile(&arena, "test/simple.yaml");
 
     const result = try parsed.parse(arena.allocator(), Simple);
     const expected = Simple{
@@ -189,11 +187,10 @@ const LibTbd = struct {
 };
 
 test "single lib tbd" {
-    var parsed = try loadFromFile("test/single_lib.tbd");
-    defer parsed.deinit(gpa);
-
     var arena = Arena.init(gpa);
     defer arena.deinit();
+
+    var parsed = try loadFromFile(&arena, "test/single_lib.tbd");
 
     const result = try parsed.parse(arena.allocator(), LibTbd);
     const expected = LibTbd{
@@ -265,11 +262,10 @@ test "single lib tbd" {
 }
 
 test "multi lib tbd" {
-    var parsed = try loadFromFile("test/multi_lib.tbd");
-    defer parsed.deinit(gpa);
-
     var arena = Arena.init(gpa);
     defer arena.deinit();
+
+    var parsed = try loadFromFile(&arena, "test/multi_lib.tbd");
 
     const result = try parsed.parse(arena.allocator(), []LibTbd);
     const expected = &[_]LibTbd{

@@ -32,9 +32,9 @@ pub fn deinit(self: *Yaml, gpa: Allocator) void {
     self.* = undefined;
 }
 
-pub fn load(self: *Yaml, gpa: Allocator) !void {
+pub fn load(self: *Yaml, arena: *ArenaAllocator) !void {
+    const gpa: Allocator = arena.allocator();
     var parser = try Parser.init(gpa, self.source);
-    defer parser.deinit(gpa);
 
     parser.parse(gpa) catch |err| switch (err) {
         error.ParseFailure => {
@@ -456,12 +456,9 @@ pub const Value = union(enum) {
                 // TODO use ContextAdapted HashMap and do not duplicate keys, intern
                 // in a contiguous string buffer.
                 var out_map: Map = .empty;
-                errdefer out_map.deinit(gpa);
                 try out_map.ensureTotalCapacity(gpa, 1);
 
                 const key = try gpa.dupe(u8, tree.rawString(entry.key, entry.key));
-                errdefer gpa.free(key);
-
                 const gop = out_map.getOrPutAssumeCapacity(key);
                 if (gop.found_existing) return error.DuplicateMapKey;
 
@@ -479,13 +476,6 @@ pub const Value = union(enum) {
                 // TODO use ContextAdapted HashMap and do not duplicate keys, intern
                 // in a contiguous string buffer.
                 var out_map: Map = .empty;
-                errdefer {
-                    for (out_map.keys(), out_map.values()) |key, *value| {
-                        gpa.free(key);
-                        value.deinit(gpa);
-                    }
-                    out_map.deinit(gpa);
-                }
                 try out_map.ensureTotalCapacity(gpa, map.data.map_len);
 
                 var extra_end = map.end;
@@ -495,11 +485,7 @@ pub const Value = union(enum) {
 
                     const key = try gpa.dupe(u8, tree.rawString(entry.data.key, entry.data.key));
                     const gop = out_map.getOrPutAssumeCapacity(key);
-                    if (gop.found_existing) {
-                        // errdefer free seems to cause a double-free
-                        gpa.free(key);
-                        return error.DuplicateMapKey;
-                    }
+                    if (gop.found_existing) return error.DuplicateMapKey;
 
                     gop.value_ptr.* = if (entry.data.maybe_node.unwrap()) |value|
                         try Value.fromNode(gpa, tree, value)
@@ -515,7 +501,6 @@ pub const Value = union(enum) {
             .list_one => {
                 const value_index = tree.nodeData(node_index).node;
                 const out_list = try gpa.alloc(Value, 1);
-                errdefer gpa.free(out_list);
                 const value = try Value.fromNode(gpa, tree, value_index);
                 out_list[0] = value;
                 return Value{ .list = out_list };
@@ -523,12 +508,6 @@ pub const Value = union(enum) {
             .list_two => {
                 const list = tree.nodeData(node_index).list;
                 const out_list = try gpa.alloc(Value, 2);
-                errdefer {
-                    for (out_list) |*value| {
-                        value.deinit(gpa);
-                    }
-                    gpa.free(out_list);
-                }
                 for (out_list, &[2]Node.Index{ list.el1, list.el2 }) |*out, value_index| {
                     out.* = try Value.fromNode(gpa, tree, value_index);
                 }
@@ -539,10 +518,6 @@ pub const Value = union(enum) {
                 const list = tree.extraData(Tree.List, extra_index);
 
                 var out_list: std.ArrayListUnmanaged(Value) = .empty;
-                errdefer for (out_list.items) |*value| {
-                    value.deinit(gpa);
-                };
-                defer out_list.deinit(gpa);
                 try out_list.ensureTotalCapacityPrecise(gpa, list.data.list_len);
 
                 var extra_end = list.end;

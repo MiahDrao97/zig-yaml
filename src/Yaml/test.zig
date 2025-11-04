@@ -12,10 +12,11 @@ test "simple list" {
         \\- b
         \\- c
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
 
@@ -33,13 +34,11 @@ test "simple list parsed as booleans" {
         \\- false
         \\- true
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const parsed = try yaml.parse(arena.allocator(), []const bool);
     try testing.expectEqual(parsed.len, 3);
@@ -55,15 +54,13 @@ test "simple list typed as array of strings" {
         \\- b
         \\- c
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
 
     const arr = try yaml.parse(arena.allocator(), [3][]const u8);
     try testing.expectEqual(3, arr.len);
@@ -78,15 +75,13 @@ test "simple list typed as array of ints" {
         \\- 1
         \\- 2
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
 
     const arr = try yaml.parse(arena.allocator(), [3]u8);
     try testing.expectEqualSlices(u8, &[_]u8{ 0, 1, 2 }, &arr);
@@ -98,15 +93,13 @@ test "list of mixed sign integer" {
         \\- -1
         \\- 2
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
 
     const arr = try yaml.parse(arena.allocator(), [3]i8);
     try testing.expectEqualSlices(i8, &[_]i8{ 0, -1, 2 }, &arr);
@@ -121,15 +114,13 @@ test "several integer bases" {
         \\- 0o10
         \\- -0O10
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
 
     const arr = try yaml.parse(arena.allocator(), [6]i8);
     try testing.expectEqualSlices(i8, &[_]i8{ 10, -10, 16, -16, 8, -8 }, &arr);
@@ -139,10 +130,11 @@ test "simple flow sequence / bracket list" {
     const source =
         \\a_key: [a, b, c]
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
 
@@ -160,10 +152,11 @@ test "simple flow sequence / bracket list with trailing comma" {
     const source =
         \\a_key: [a, b, c,]
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
 
@@ -181,10 +174,11 @@ test "simple flow sequence / bracket list with invalid comment" {
     const source =
         \\a_key: [a, b, c]#invalid
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    const err = yaml.load(testing.allocator);
+    const err = yaml.load(&arena);
 
     try std.testing.expectError(error.ParseFailure, err);
 }
@@ -193,10 +187,11 @@ test "simple flow sequence / bracket list with double trailing commas" {
     const source =
         \\a_key: [a, b, c,,]
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    const err = yaml.load(testing.allocator);
+    const err = yaml.load(&arena);
 
     try std.testing.expectError(error.ParseFailure, err);
 }
@@ -212,15 +207,13 @@ test "more bools" {
         \\- n
         \\- y
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
 
     const arr = try yaml.parse(arena.allocator(), [8]bool);
     try testing.expectEqualSlices(bool, &[_]bool{
@@ -246,15 +239,13 @@ test "invalid enum" {
         \\- delta
         \\- echo
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
 
     const result = yaml.parse(arena.allocator(), [2]TestEnum);
     try testing.expectError(Yaml.Error.InvalidEnum, result);
@@ -264,10 +255,11 @@ test "simple map untyped" {
     const source =
         \\a: 0
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
 
@@ -286,10 +278,11 @@ test "simple map untyped with a list of maps" {
         \\    bar: 4
         \\c: 1
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
 
@@ -311,10 +304,11 @@ test "simple map untyped with a list of maps. no indent" {
         \\- foo: 1
         \\c: 1
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
 
@@ -335,10 +329,11 @@ test "simple map untyped with a list of maps. no indent 2" {
         \\  bar: 4
         \\c: 1
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
+    try yaml.load(&arena);
 
     try testing.expectEqual(yaml.docs.items.len, 1);
 
@@ -360,13 +355,11 @@ test "simple map typed" {
         \\b: hello there
         \\c: 'wait, what?'
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const simple = try yaml.parse(arena.allocator(), struct { a: usize, b: []const u8, c: []const u8 });
     try testing.expectEqual(@as(usize, 0), simple.a);
@@ -380,13 +373,11 @@ test "typed nested structs" {
         \\  b: hello there
         \\  c: 'wait, what?'
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const simple = try yaml.parse(arena.allocator(), struct {
         a: struct {
@@ -403,13 +394,11 @@ test "typed union with nested struct" {
         \\a:
         \\  b: hello there
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const simple = try yaml.parse(arena.allocator(), union(enum) {
         tag_a: struct {
@@ -431,13 +420,11 @@ test "typed union with nested struct 2" {
         \\c:
         \\  d: hello there
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const simple = try yaml.parse(arena.allocator(), union(enum) {
         tag_a: struct {
@@ -460,13 +447,11 @@ test "single quoted string" {
         \\- 'here''s an escaped quote'
         \\- 'newlines and tabs\nare not\tsupported'
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const arr = try yaml.parse(arena.allocator(), [3][]const u8);
     try testing.expectEqual(arr.len, 3);
@@ -483,13 +468,11 @@ test "double quoted string" {
         \\- "let's have
         \\some fun!"
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const arr = try yaml.parse(arena.allocator(), [4][]const u8);
     try testing.expectEqual(arr.len, 4);
@@ -508,13 +491,11 @@ test "commas in string" {
     const source =
         \\a: 900,50,50
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const simple = try yaml.parse(arena.allocator(), struct {
         a: []const u8,
@@ -530,13 +511,11 @@ test "multidoc typed as a slice of structs" {
         \\a: 1
         \\...
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     {
         const result = try yaml.parse(arena.allocator(), [2]struct { a: usize });
@@ -561,13 +540,11 @@ test "multidoc typed as a struct is an error" {
         \\b: 1
         \\...
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     try testing.expectError(Yaml.Error.TypeMismatch, yaml.parse(arena.allocator(), struct { a: usize }));
     try testing.expectError(Yaml.Error.TypeMismatch, yaml.parse(arena.allocator(), struct { b: usize }));
@@ -584,13 +561,11 @@ test "multidoc typed as a slice of structs with optionals" {
         \\b: different field
         \\...
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const result = try yaml.parse(arena.allocator(), []struct { a: usize, b: ?[]const u8, c: ?f16 });
     try testing.expectEqual(result.len, 2);
@@ -608,13 +583,11 @@ test "multidoc typed as a slice of structs with optionals" {
 
 test "empty yaml can be represented as void" {
     const source = "";
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const result = try yaml.parse(arena.allocator(), void);
     try testing.expect(@TypeOf(result) == void);
@@ -624,13 +597,11 @@ test "nonempty yaml cannot be represented as void" {
     const source =
         \\a: b
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     try testing.expectError(Yaml.Error.TypeMismatch, yaml.parse(arena.allocator(), void));
 }
@@ -640,13 +611,11 @@ test "typed array size mismatch" {
         \\- 0
         \\- 0
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     try testing.expectError(Yaml.Error.ArraySizeMismatch, yaml.parse(arena.allocator(), [1]usize));
     try testing.expectError(Yaml.Error.ArraySizeMismatch, yaml.parse(arena.allocator(), [5]usize));
@@ -663,13 +632,11 @@ test "comments" {
         \\# second value
         \\- val2
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const simple = try yaml.parse(arena.allocator(), struct {
         key: []const []const u8,
@@ -683,13 +650,11 @@ test "promote ints to floats in a list mixed numeric types" {
     const source =
         \\a_list: [0, 1.0]
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const simple = try yaml.parse(arena.allocator(), struct {
         a_list: []const f64,
@@ -701,13 +666,11 @@ test "demoting floats to ints in a list is an error" {
     const source =
         \\a_list: [0, 1.0]
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     try testing.expectError(error.InvalidCharacter, yaml.parse(arena.allocator(), struct {
         a_list: []const u64,
@@ -719,9 +682,11 @@ test "duplicate map keys" {
         \\a: b
         \\a: c
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
+
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try testing.expectError(error.DuplicateMapKey, yaml.load(testing.allocator));
+    try testing.expectError(error.DuplicateMapKey, yaml.load(&arena));
 }
 
 fn testStringify(expected: []const u8, input: anytype) !void {
@@ -811,7 +776,7 @@ test "pointer of a value" {
     defer arena.deinit();
 
     var yaml = Yaml{ .source = source };
-    try yaml.load(arena.allocator());
+    try yaml.load(&arena);
 
     const parsed = try yaml.parse(arena.allocator(), *TestStruct);
     try testing.expectEqual(1, parsed.a);
@@ -903,7 +868,7 @@ test "struct default value test" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
         var yamlParser = Yaml{ .source = tc.yaml };
-        try yamlParser.load(arena.allocator());
+        try yamlParser.load(&arena);
         const parsed = try yamlParser.parse(arena.allocator(), TestStruct);
         try testing.expectEqual(tc.container.a, parsed.a);
         try testing.expectEqualDeep(tc.container.b, parsed.b);
@@ -918,15 +883,13 @@ test "enums" {
         \\- b
         \\- c
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     const Enum = enum { a, b, c };
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const parsed = try yaml.parse(arena.allocator(), []const Enum);
     try testing.expectEqualDeep(&[_]Enum{
@@ -957,15 +920,13 @@ test "parse struct as list of structs" {
     const source =
         \\a: 1
     ;
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
 
     const Struct = struct { a: u32 };
 
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try yaml.load(testing.allocator);
-
-    var arena = Arena.init(testing.allocator);
-    defer arena.deinit();
+    try yaml.load(&arena);
 
     const result = yaml.parse(arena.allocator(), []Struct);
     try testing.expectError(error.TypeMismatch, result);
@@ -991,7 +952,9 @@ test "duplicate key error" {
         \\          description: oh my
     ;
 
+    var arena: Arena = .init(testing.allocator);
+    defer arena.deinit();
+
     var yaml: Yaml = .{ .source = source };
-    defer yaml.deinit(testing.allocator);
-    try testing.expectError(error.DuplicateMapKey, yaml.load(testing.allocator));
+    try testing.expectError(error.DuplicateMapKey, yaml.load(&arena));
 }
