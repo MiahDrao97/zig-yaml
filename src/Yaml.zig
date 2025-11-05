@@ -20,17 +20,17 @@ tree: Tree,
 
 /// All memory allocating from parsing and creating the parse tree or parse errors is contained in this managed value.
 /// Call `deinit()` on the managed `LoadYaml` to free.
-pub fn load(gpa: Allocator, source: []const u8) LoadError!Managed(LoadYaml) {
+pub fn load(gpa: Allocator, source: []const u8) YamlError!Managed(LoadYaml) {
     const Loader = struct {
         source: []const u8,
 
-        fn loadInner(this: @This(), arena: Allocator) LoadError!LoadYaml {
+        fn loadInner(this: @This(), arena: Allocator) YamlError!LoadYaml {
             var parser = try Parser.init(arena, this.source);
             // not going to deinit because this is created from an arena
 
             parser.parse(arena) catch |err| return switch (err) {
-                error.ParseFailure => .{
-                    .yaml = error.ParseFailure,
+                error.ParseFailure => |parse_failure| .{
+                    .yaml = parse_failure,
                     .parser_errors = try parser.errors.toOwnedBundle(""),
                 },
                 else => err,
@@ -320,8 +320,6 @@ pub const YamlError = error{
     OutOfMemory,
     CannotEncodeValue,
 } || ParseError || std.fmt.ParseIntError;
-
-pub const LoadError = Allocator.Error || YamlError;
 
 pub const StringifyError = error{
     OutOfMemory,
