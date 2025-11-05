@@ -18,7 +18,6 @@ const Yaml = @This();
 docs: std.ArrayListUnmanaged(Value),
 tree: Tree,
 
-/// No `deinit()` is defined on `Yaml`:
 /// All memory allocating from parsing and creating the parse tree or parse errors is contained in this managed value.
 /// Call `deinit()` on the managed `LoadYaml` to free.
 pub fn load(gpa: Allocator, source: []const u8) LoadError!Managed(LoadYaml) {
@@ -478,7 +477,10 @@ pub const Value = union(enum) {
 
                 const key = try gpa.dupe(u8, tree.rawString(entry.key, entry.key));
                 const gop = out_map.getOrPutAssumeCapacity(key);
-                if (gop.found_existing) return error.DuplicateMapKey;
+                if (gop.found_existing) {
+                    log.err("Duplicate key '{s}' in object", .{key});
+                    return error.DuplicateMapKey;
+                }
 
                 gop.value_ptr.* = if (entry.maybe_node.unwrap()) |value|
                     try Value.fromNode(gpa, tree, value)
@@ -503,7 +505,10 @@ pub const Value = union(enum) {
 
                     const key = try gpa.dupe(u8, tree.rawString(entry.data.key, entry.data.key));
                     const gop = out_map.getOrPutAssumeCapacity(key);
-                    if (gop.found_existing) return error.DuplicateMapKey;
+                    if (gop.found_existing) {
+                        log.err("Duplicate key '{s}' in object", .{key});
+                        return error.DuplicateMapKey;
+                    }
 
                     gop.value_ptr.* = if (entry.data.maybe_node.unwrap()) |value|
                         try Value.fromNode(gpa, tree, value)
