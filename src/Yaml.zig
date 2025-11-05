@@ -15,37 +15,52 @@ const Token = Tokenizer.Token;
 const Tree = @import("Tree.zig");
 const Yaml = @This();
 
-source: []const u8,
-docs: std.ArrayListUnmanaged(Value) = .empty,
-tree: ?Tree = null,
-parse_errors: ErrorBundle = .empty,
+docs: std.ArrayListUnmanaged(Value),
+tree: Tree,
 
-/// No `deinit()` is defined on `Yaml`; that memory is owned by whichever arena you pass in
-pub fn load(self: *Yaml, arena: *ArenaAllocator) !void {
-    const allocator: Allocator = arena.allocator();
-    var parser = try Parser.init(allocator, self.source);
+/// No `deinit()` is defined on `Yaml`:
+/// All memory allocating from parsing and creating the parse tree or parse errors is contained in this managed value.
+/// Call `deinit()` on the managed `LoadYaml` to free.
+pub fn load(gpa: Allocator, source: []const u8) LoadError!Managed(LoadYaml) {
+    const Loader = struct {
+        source: []const u8,
 
-    parser.parse(allocator) catch |err| switch (err) {
-        error.ParseFailure => {
-            self.parse_errors = try parser.errors.toOwnedBundle("");
-            return error.ParseFailure;
-        },
-        else => return err,
+        fn loadInner(this: @This(), arena: Allocator) LoadError!LoadYaml {
+            var parser = try Parser.init(arena, this.source);
+            // not going to deinit because this is created from an arena
+
+            parser.parse(arena) catch |err| return switch (err) {
+                error.ParseFailure => .{
+                    .yaml = error.ParseFailure,
+                    .parser_errors = try parser.errors.toOwnedBundle(""),
+                },
+                else => err,
+            };
+
+            var yaml: Yaml = .{
+                .tree = try parser.toOwnedTree(arena),
+                .docs = .empty,
+            };
+
+            try yaml.docs.ensureTotalCapacityPrecise(arena, yaml.tree.docs.len);
+
+            for (yaml.tree.docs) |node| {
+                const value = try Value.fromNode(arena, yaml.tree, node);
+                yaml.docs.appendAssumeCapacity(value);
+            }
+
+            return .{ .yaml = yaml };
+        }
     };
 
-    self.tree = try parser.toOwnedTree(allocator);
-
-    try self.docs.ensureTotalCapacityPrecise(allocator, self.tree.?.docs.len);
-
-    for (self.tree.?.docs) |node| {
-        const value = try Value.fromNode(allocator, self.tree.?, node);
-        self.docs.appendAssumeCapacity(value);
-    }
+    var value: Managed(LoadYaml) = undefined;
+    const ctx: Loader = .{ .source = source };
+    return value.create(gpa, ctx, Loader.loadInner) catch |err| @errorCast(err);
 }
 
 /// Create a managed value of type `T`.
 /// All memory allocated to create the value is contained within the managed value and can be freed with a `deinit()` call.
-pub fn parse(self: Yaml, gpa: Allocator, comptime T: type) Error!Managed(T) {
+pub fn parse(self: Yaml, comptime T: type, gpa: Allocator) Error!Managed(T) {
     const ParseInner = struct {
         yaml: Yaml,
 
@@ -261,9 +276,9 @@ fn parseEnum(self: Yaml, comptime T: type, value: Value) Error!T {
 }
 
 pub fn stringify(self: Yaml, writer: *std.Io.Writer) !void {
-    for (self.docs.items, self.tree.?.docs) |doc, node| {
+    for (self.docs.items, self.tree.docs) |doc, node| {
         try writer.writeAll("---");
-        if (self.tree.?.directive(node)) |directive| {
+        if (self.tree.directive(node)) |directive| {
             try writer.print(" !{s}", .{directive});
         }
         try writer.writeByte('\n');
@@ -306,6 +321,8 @@ pub const YamlError = error{
     OutOfMemory,
     CannotEncodeValue,
 } || ParseError || std.fmt.ParseIntError;
+
+pub const LoadError = Allocator.Error || YamlError;
 
 pub const StringifyError = error{
     OutOfMemory,
@@ -645,6 +662,14 @@ pub const ErrorMsg = struct {
 };
 
 pub const Managed = @import("zutil").Managed;
+
+/// Result returned from loading a YAML from source
+pub const LoadYaml = struct {
+    /// The yaml (could be a failure)
+    yaml: error{ParseFailure}!Yaml,
+    /// Parser errors encountered
+    parser_errors: ErrorBundle = .empty,
+};
 
 test {
     _ = @import("Yaml/test.zig");

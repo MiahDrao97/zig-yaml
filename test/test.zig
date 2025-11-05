@@ -3,21 +3,20 @@ const mem = std.mem;
 const testing = std.testing;
 
 const Allocator = mem.Allocator;
-const Arena = std.heap.ArenaAllocator;
 const Yaml = @import("yaml").Yaml;
+const LoadYaml = Yaml.LoadYaml;
+const Managed = Yaml.Managed;
 
 const gpa = testing.allocator;
 
-fn loadFromFile(arena: *Arena, file_path: []const u8) !Yaml {
+fn loadFromFile(allocator: Allocator, file_path: []const u8) !Managed(LoadYaml) {
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
-    const source = try file.readToEndAlloc(arena.allocator(), std.math.maxInt(u32));
+    const source = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
+    defer allocator.free(source);
 
-    var yaml: Yaml = .{ .source = source };
-    try yaml.load(arena);
-
-    return yaml;
+    return try Yaml.load(allocator, source);
 }
 
 test "simple" {
@@ -57,12 +56,11 @@ test "simple" {
         }
     };
 
-    var arena = Arena.init(gpa);
-    defer arena.deinit();
+    const load_yaml = try loadFromFile(gpa, "test/simple.yaml");
+    defer load_yaml.deinit();
 
-    var parsed = try loadFromFile(&arena, "test/simple.yaml");
-
-    const result = try parsed.parse(testing.allocator, Simple);
+    const parsed: Yaml = try load_yaml.value.yaml;
+    const result = try parsed.parse(Simple, gpa);
     defer result.deinit();
 
     const expected = Simple{
@@ -189,12 +187,11 @@ const LibTbd = struct {
 };
 
 test "single lib tbd" {
-    var arena = Arena.init(gpa);
-    defer arena.deinit();
+    const load_yaml = try loadFromFile(gpa, "test/single_lib.tbd");
+    defer load_yaml.deinit();
 
-    var parsed = try loadFromFile(&arena, "test/single_lib.tbd");
-
-    const result = try parsed.parse(arena.allocator(), LibTbd);
+    const parsed: Yaml = try load_yaml.value.yaml;
+    const result = try parsed.parse(LibTbd, gpa);
     defer result.deinit();
 
     const expected = LibTbd{
@@ -266,12 +263,13 @@ test "single lib tbd" {
 }
 
 test "multi lib tbd" {
-    var arena = Arena.init(gpa);
-    defer arena.deinit();
+    var load_yaml = try loadFromFile(gpa, "test/multi_lib.tbd");
+    defer load_yaml.deinit();
 
-    var parsed = try loadFromFile(&arena, "test/multi_lib.tbd");
+    const parsed: Yaml = try load_yaml.value.yaml;
+    const result = try parsed.parse([]LibTbd, gpa);
+    defer result.deinit();
 
-    const result = try parsed.parse(arena.allocator(), []LibTbd);
     const expected = &[_]LibTbd{
         .{
             .tbd_version = 4,
