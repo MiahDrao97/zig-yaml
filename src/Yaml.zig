@@ -68,7 +68,6 @@ pub fn parse(self: Yaml, comptime T: type, gpa: Allocator) Error!Managed(T) {
                 if (@typeInfo(T) == .void) return {};
                 return error.TypeMismatch;
             }
-
             if (this.yaml.docs.items.len == 1) {
                 return this.yaml.parseValue(arena, T, this.yaml.docs.items[0]);
             }
@@ -102,6 +101,27 @@ pub fn parse(self: Yaml, comptime T: type, gpa: Allocator) Error!Managed(T) {
     var value: Managed(T) = undefined;
     const ctx: ParseInner = .{ .yaml = self };
     return value.create(gpa, ctx, ParseInner.parseInner) catch |err| @errorCast(err);
+}
+
+/// This is the typical yaml file: Can be represented as one large map, and this would be the root
+pub fn rootObject(self: Yaml) ?Map {
+    if (self.docs.items.len > 0)
+        if (self.docs.items[0].asMap()) |obj|
+            return obj;
+    return null;
+}
+
+/// If not null, the YAML is just an array such as:
+/// ```
+/// - a
+/// - b
+/// - c
+/// ```
+pub fn rootArray(self: Yaml) ?[]Value {
+    if (self.docs.items.len > 0)
+        if (self.docs.items[0].asList()) |arr|
+            return arr;
+    return null;
 }
 
 fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Error!T {

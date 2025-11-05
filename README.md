@@ -27,7 +27,7 @@ zig fetch --save=yaml https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
 ```
 
 And then add those lines to your project's `build.zig` file:
-```
+```zig
 // add that code after "b.installArtifact(exe)" line
 const yaml = b.dependency("yaml", .{
   .target = target,
@@ -55,6 +55,8 @@ If you want to use the parser as a library, add it as a package the usual way, a
 ```zig
 const std = @import("std");
 const Yaml = @import("yaml").Yaml;
+const Managed = Yaml.Managed;
+const LoadYaml = Yaml.LoadYaml;
 const gpa = std.testing.allocator;
 
 const source =
@@ -71,23 +73,25 @@ const source =
     \\           21 ]
 ;
 
-var yaml: Yaml = .{ .source = source };
-defer yaml.deinit(gpa);
+const load_yaml: Managed(LoadYaml) = try Yaml.load(gpa, source);
+defer load_yaml.deinit(); // all the memory produced from parsing is owned by this managed value
+
+const yaml: Yaml = load_yaml.value.yaml catch |err| {
+    // encountered parse errors: rendering the parse to std err in this example
+    load_yaml.value.parser_errors.renderToStdErr(.{ .ttyconf = .detect(.stderr()) });
+    return err;
+}
 ```
 
-1. For untyped, raw representation of YAML, use `Yaml.load`:
+1. For untyped, raw representation of YAML, use the `rootObject()` method to access the root of the parse tree.
 
 ```zig
-try yaml.load(gpa, source);
-
-try std.testing.expectEqual(untyped.docs.items.len, 1);
-
-const map = untyped.docs.items[0].map;
+const map: Yaml.Map = yaml.rootObject().?; // would be null if the YAML is empty or just a list
 try std.testing.expect(map.contains("names"));
 try std.testing.expectEqual(map.get("names").?.list.len, 3);
 ```
 
-2. For typed representation of YAML, use `Yaml.parse`:
+2. For typed representation of YAML, use the `parse()` method:
 
 ```zig
 const Simple = struct {
@@ -100,14 +104,13 @@ const Simple = struct {
     finally: [4]f16,
 };
 
-var arena = std.heap.ArenaAllocator.init(gpa);
-defer arena.deinit();
+const simple: Managed(Simple) = try yaml.parse(Simple, gpa);
+defer simple.deinit();
 
-const simple = try yaml.parse(arena.allocator(), Simple);
-try std.testing.expectEqual(simple.names.len, 3);
+try std.testing.expectEqual(simple.value.names.len, 3);
 ```
 
-3. To convert `Yaml` structure back into text representation, use `Yaml.stringify`:
+3. To convert `Yaml` structure back into text representation, use `stringify()` method:
 
 ```zig
 try yaml.stringify(std.io.getStdOut().writer());
@@ -122,28 +125,6 @@ nested:
     some: one
     wick: john doe
 finally: [ 8.17, 19.78, 17, 21  ]
-```
-
-### Error handling
-
-The library currently reports user-friendly, more informative parsing errors only which are stored out-of-band.
-They can be accessed via `Yaml.parse_errors: std.zig.ErrorBundle`, but typically you would only hook them up to
-your error reporting setup.
-
-For example, `example/yaml.zig` binary does it like so:
-
-```zig
-var yaml: Yaml = .{ .source = source };
-defer yaml.deinit(allocator);
-
-yaml.load(allocator) catch |err| switch (err) {
-    error.ParseFailure => {
-        assert(yaml.parse_errors.errorMessageCount() > 0);
-        yaml.parse_errors.renderToStdErr(.{ .ttyconf = std.io.tty.detectConfig(std.io.getStdErr()) });
-        return error.ParseFailure;
-    },
-    else => return err,
-};
 ```
 
 ## Running YAML spec test suite
