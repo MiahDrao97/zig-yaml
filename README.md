@@ -29,11 +29,6 @@ The library can be installed using the Zig tools. First, you need to fetch the r
 zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
 ```
 
-It's more convenient to save the library with a desired name, for example, like this (assuming you are targeting latest release of Zig):
-```
-zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
-```
-
 And then configure your dependency in your project's `build.zig` file:
 ```zig
 const std = @import("std");
@@ -99,7 +94,7 @@ const load_yaml: Managed(LoadYaml) = try Yaml.load(gpa, source);
 defer load_yaml.deinit(); // all the memory produced from parsing is owned by this managed value
 
 const yaml: Yaml = load_yaml.value.yaml catch |err| {
-    // if we encountered parse errors, we can rendering the errors to a writer (std err in this example)
+    // if we encountered parse errors, we can render the errors to a writer (std err in this example)
     load_yaml.value.parser_errors.renderToStdErr(.{ .ttyconf = .detect(.stderr()) });
     return err;
 }
@@ -108,7 +103,7 @@ const yaml: Yaml = load_yaml.value.yaml catch |err| {
 1. For untyped, raw representation of YAML, use the `rootObject()` method to access the root of the parse tree.
 
 ```zig
-const map: Yaml.Map = yaml.rootObject().?; // would be null if the YAML is empty or just a list
+const map: Yaml.Map = yaml.rootObject();
 try std.testing.expect(map.contains("names"));
 try std.testing.expectEqual(map.get("names").?.list.len, 3);
 ```
@@ -126,10 +121,13 @@ const Simple = struct {
     finally: [4]f16,
 };
 
-const simple: Managed(Simple) = try yaml.parse(Simple, gpa);
-defer simple.deinit();
+// produces another managed value here:
+// copying strings and other memory in case the managed yaml value is deinitialized first
+const parsed: Managed(Simple) = try yaml.parse(Simple, gpa);
+defer parsed.deinit();
 
-try std.testing.expectEqual(simple.value.names.len, 3);
+const simple: Simple = parsed.value;
+try std.testing.expectEqual(simple.names.len, 3);
 ```
 
 3. To convert `Yaml` structure back into text representation, use `stringify()` method:

@@ -103,25 +103,28 @@ pub fn parse(self: Yaml, comptime T: type, gpa: Allocator) Error!Managed(T) {
     return value.create(gpa, ctx, ParseInner.parseInner) catch |err| @errorCast(err);
 }
 
-/// This is the typical yaml file: Can be represented as one large map, and this would be the root
-pub fn rootObject(self: Yaml) ?Map {
+/// This is the typical yaml file:
+/// Can be represented as one large map, and this would be the root.
+///
+/// If the YAML file was empty or just a list, then this will return an empty map.
+pub fn rootObject(self: Yaml) Map {
     if (self.docs.items.len > 0)
         if (self.docs.items[0].asMap()) |obj|
             return obj;
-    return null;
+    return .empty;
 }
 
-/// If not null, the YAML is just an array such as:
+/// If not empty, the YAML is just an array such as:
 /// ```
 /// - a
 /// - b
 /// - c
 /// ```
-pub fn rootArray(self: Yaml) ?[]Value {
+pub fn rootArray(self: Yaml) []Value {
     if (self.docs.items.len > 0)
         if (self.docs.items[0].asList()) |arr|
             return arr;
-    return null;
+    return &.{};
 }
 
 fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Error!T {

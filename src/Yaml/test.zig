@@ -136,7 +136,7 @@ test "simple flow sequence / bracket list" {
     const yaml: Yaml = try load_yaml.value.yaml;
     try testing.expectEqual(yaml.docs.items.len, 1);
 
-    const map = yaml.rootObject().?;
+    const map = yaml.rootObject();
 
     const list = map.get("a_key").?.list;
     try testing.expectEqual(list.len, 3);
@@ -156,7 +156,7 @@ test "simple flow sequence / bracket list with trailing comma" {
     const yaml: Yaml = try load_yaml.value.yaml;
     try testing.expectEqual(yaml.docs.items.len, 1);
 
-    const map = yaml.rootObject().?;
+    const map = yaml.rootObject();
 
     const list = map.get("a_key").?.list;
     try testing.expectEqual(list.len, 3);
@@ -249,7 +249,7 @@ test "simple map untyped" {
     const yaml: Yaml = try load_yaml.value.yaml;
     try testing.expectEqual(yaml.docs.items.len, 1);
 
-    const map = yaml.rootObject().?;
+    const map = yaml.rootObject();
     try testing.expect(map.contains("a"));
     try testing.expectEqualStrings("0", map.get("a").?.scalar);
 }
@@ -270,7 +270,7 @@ test "simple map untyped with a list of maps" {
     const yaml: Yaml = try load_yaml.value.yaml;
     try testing.expectEqual(yaml.docs.items.len, 1);
 
-    const map = yaml.rootObject().?;
+    const map = yaml.rootObject();
     try testing.expect(map.contains("a"));
     try testing.expect(map.contains("b"));
     try testing.expect(map.contains("c"));
@@ -294,7 +294,7 @@ test "simple map untyped with a list of maps. no indent" {
     const yaml: Yaml = try load_yaml.value.yaml;
     try testing.expectEqual(yaml.docs.items.len, 1);
 
-    const map = yaml.rootObject().?;
+    const map = yaml.rootObject();
     try testing.expect(map.contains("b"));
     try testing.expect(map.contains("c"));
     try testing.expectEqualStrings("1", map.get("c").?.scalar);
@@ -317,7 +317,7 @@ test "simple map untyped with a list of maps. no indent 2" {
     const yaml: Yaml = try load_yaml.value.yaml;
     try testing.expectEqual(yaml.docs.items.len, 1);
 
-    const map = yaml.rootObject().?;
+    const map = yaml.rootObject();
     try testing.expect(map.contains("a"));
     try testing.expect(map.contains("b"));
     try testing.expect(map.contains("c"));
