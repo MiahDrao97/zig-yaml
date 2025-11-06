@@ -6,7 +6,7 @@ Forked from https://github.com/kubkon/zig-yaml
 
 ## What is it?
 
-Words from kubkon:
+### Words from kubkon:
 
 This lib is meant to serve as a basic (or maybe not?) YAML parser for Zig. It will strive to be YAML 1.2 compatible
 but one step at a time.
@@ -15,7 +15,7 @@ This is very much a work-in-progress, so expect things to break on a regular bas
 community involved in helping out with this btw! Feel free to fork and submit patches, enhancements, and of course
 issues.
 
-Words from me (MiahDrao97):
+### Words from me (MiahDrao97):
 
 I wanted to stay on top of the newest Zig releases.
 I found this particular YAML parser the best because it allowed for loading a schema-less YAML file, which is a requirement for my use-case.
