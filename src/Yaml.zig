@@ -15,78 +15,116 @@ const Token = Tokenizer.Token;
 const Tree = @import("Tree.zig");
 const Yaml = @This();
 
-source: []const u8,
-docs: std.ArrayListUnmanaged(Value) = .empty,
-tree: ?Tree = null,
-parse_errors: ErrorBundle = .empty,
+docs: std.ArrayListUnmanaged(Value),
+tree: Tree,
 
-pub fn deinit(self: *Yaml, gpa: Allocator) void {
-    for (self.docs.items) |*value| {
-        value.deinit(gpa);
-    }
-    self.docs.deinit(gpa);
-    if (self.tree) |*tree| {
-        tree.deinit(gpa);
-    }
-    self.parse_errors.deinit(gpa);
-    self.* = undefined;
-}
+/// All memory allocating from parsing and creating the parse tree or parse errors is contained in this managed value.
+/// Call `deinit()` on the managed `LoadYaml` to free.
+pub fn load(gpa: Allocator, source: []const u8) YamlError!Managed(LoadYaml) {
+    const Loader = struct {
+        source: []const u8,
 
-pub fn load(self: *Yaml, gpa: Allocator) !void {
-    var parser = try Parser.init(gpa, self.source);
-    defer parser.deinit(gpa);
+        fn loadInner(this: @This(), arena: Allocator) YamlError!LoadYaml {
+            var parser = try Parser.init(arena, this.source);
+            // not going to deinit because this is created from an arena
 
-    parser.parse(gpa) catch |err| switch (err) {
-        error.ParseFailure => {
-            self.parse_errors = try parser.errors.toOwnedBundle("");
-            return error.ParseFailure;
-        },
-        else => return err,
+            parser.parse(arena) catch |err| return switch (err) {
+                error.ParseFailure => |parse_failure| .{
+                    .yaml = parse_failure,
+                    .parser_errors = try parser.errors.toOwnedBundle(""),
+                },
+                else => err,
+            };
+
+            var yaml: Yaml = .{
+                .tree = try parser.toOwnedTree(arena),
+                .docs = .empty,
+            };
+
+            try yaml.docs.ensureTotalCapacityPrecise(arena, yaml.tree.docs.len);
+
+            for (yaml.tree.docs) |node| {
+                const value = try Value.fromNode(arena, yaml.tree, node);
+                yaml.docs.appendAssumeCapacity(value);
+            }
+
+            return .{ .yaml = yaml };
+        }
     };
 
-    self.tree = try parser.toOwnedTree(gpa);
-
-    try self.docs.ensureTotalCapacityPrecise(gpa, self.tree.?.docs.len);
-
-    for (self.tree.?.docs) |node| {
-        const value = try Value.fromNode(gpa, self.tree.?, node);
-        self.docs.appendAssumeCapacity(value);
-    }
+    var value: Managed(LoadYaml) = undefined;
+    const ctx: Loader = .{ .source = source };
+    return value.create(gpa, ctx, Loader.loadInner) catch |err| @errorCast(err);
 }
 
-pub fn parse(self: Yaml, arena: Allocator, comptime T: type) Error!T {
-    if (self.docs.items.len == 0) {
-        if (@typeInfo(T) == .void) return {};
-        return error.TypeMismatch;
-    }
+/// Create a managed value of type `T`.
+/// All memory allocated to create the value is contained within the managed value and can be freed with a `deinit()` call.
+pub fn parse(self: Yaml, comptime T: type, gpa: Allocator) Error!Managed(T) {
+    const ParseInner = struct {
+        yaml: Yaml,
 
-    if (self.docs.items.len == 1) {
-        return self.parseValue(arena, T, self.docs.items[0]);
-    }
-
-    switch (@typeInfo(T)) {
-        .array => |info| {
-            var parsed: T = undefined;
-            for (self.docs.items, 0..) |doc, i| {
-                parsed[i] = try self.parseValue(arena, info.child, doc);
+        fn parseInner(this: @This(), arena: Allocator) Error!T {
+            if (this.yaml.docs.items.len == 0) {
+                if (@typeInfo(T) == .void) return {};
+                return error.TypeMismatch;
             }
-            return parsed;
-        },
-        .pointer => |info| {
-            switch (info.size) {
-                .slice => {
-                    var parsed = try arena.alloc(info.child, self.docs.items.len);
-                    for (self.docs.items, 0..) |doc, i| {
-                        parsed[i] = try self.parseValue(arena, info.child, doc);
+            if (this.yaml.docs.items.len == 1) {
+                return this.yaml.parseValue(arena, T, this.yaml.docs.items[0]);
+            }
+
+            switch (@typeInfo(T)) {
+                .array => |info| {
+                    var parsed: T = undefined;
+                    for (this.yaml.docs.items, 0..) |doc, i| {
+                        parsed[i] = try this.yaml.parseValue(arena, info.child, doc);
                     }
                     return parsed;
                 },
+                .pointer => |info| {
+                    switch (info.size) {
+                        .slice => {
+                            var parsed = try arena.alloc(info.child, this.yaml.docs.items.len);
+                            for (this.yaml.docs.items, 0..) |doc, i| {
+                                parsed[i] = try this.yaml.parseValue(arena, info.child, doc);
+                            }
+                            return parsed;
+                        },
+                        else => return error.TypeMismatch,
+                    }
+                },
+                .@"union" => return error.Unimplemented,
                 else => return error.TypeMismatch,
             }
-        },
-        .@"union" => return error.Unimplemented,
-        else => return error.TypeMismatch,
-    }
+        }
+    };
+
+    var value: Managed(T) = undefined;
+    const ctx: ParseInner = .{ .yaml = self };
+    return value.create(gpa, ctx, ParseInner.parseInner) catch |err| @errorCast(err);
+}
+
+/// This is the typical yaml file:
+/// Can be represented as one large map, and this would be the root.
+///
+/// If the YAML file was empty or just a list, then this will return an empty map.
+pub fn rootObject(self: Yaml) Map {
+    if (self.docs.items.len > 0)
+        if (self.docs.items[0].asMap()) |obj|
+            return obj;
+    return .empty;
+}
+
+/// If not empty, the YAML is just an array such as:
+/// ```
+/// - a
+/// - b
+/// - c
+/// ```
+pub fn rootArray(self: Yaml) []Value {
+    if (self.docs.items.len > 0)
+        if (self.docs.items[0].asList()) |arr|
+            return arr;
+    return &.{};
 }
 
 fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Error!T {
@@ -260,9 +298,9 @@ fn parseEnum(self: Yaml, comptime T: type, value: Value) Error!T {
 }
 
 pub fn stringify(self: Yaml, writer: *std.Io.Writer) !void {
-    for (self.docs.items, self.tree.?.docs) |doc, node| {
+    for (self.docs.items, self.tree.docs) |doc, node| {
         try writer.writeAll("---");
-        if (self.tree.?.directive(node)) |directive| {
+        if (self.tree.directive(node)) |directive| {
             try writer.print(" !{s}", .{directive});
         }
         try writer.writeByte('\n');
@@ -456,14 +494,14 @@ pub const Value = union(enum) {
                 // TODO use ContextAdapted HashMap and do not duplicate keys, intern
                 // in a contiguous string buffer.
                 var out_map: Map = .empty;
-                errdefer out_map.deinit(gpa);
                 try out_map.ensureTotalCapacity(gpa, 1);
 
                 const key = try gpa.dupe(u8, tree.rawString(entry.key, entry.key));
-                errdefer gpa.free(key);
-
                 const gop = out_map.getOrPutAssumeCapacity(key);
-                if (gop.found_existing) return error.DuplicateMapKey;
+                if (gop.found_existing) {
+                    log.err("Duplicate key '{s}' in object", .{key});
+                    return error.DuplicateMapKey;
+                }
 
                 gop.value_ptr.* = if (entry.maybe_node.unwrap()) |value|
                     try Value.fromNode(gpa, tree, value)
@@ -479,13 +517,6 @@ pub const Value = union(enum) {
                 // TODO use ContextAdapted HashMap and do not duplicate keys, intern
                 // in a contiguous string buffer.
                 var out_map: Map = .empty;
-                errdefer {
-                    for (out_map.keys(), out_map.values()) |key, *value| {
-                        gpa.free(key);
-                        value.deinit(gpa);
-                    }
-                    out_map.deinit(gpa);
-                }
                 try out_map.ensureTotalCapacity(gpa, map.data.map_len);
 
                 var extra_end = map.end;
@@ -494,10 +525,11 @@ pub const Value = union(enum) {
                     extra_end = entry.end;
 
                     const key = try gpa.dupe(u8, tree.rawString(entry.data.key, entry.data.key));
-                    errdefer gpa.free(key);
-
                     const gop = out_map.getOrPutAssumeCapacity(key);
-                    if (gop.found_existing) return error.DuplicateMapKey;
+                    if (gop.found_existing) {
+                        log.err("Duplicate key '{s}' in object", .{key});
+                        return error.DuplicateMapKey;
+                    }
 
                     gop.value_ptr.* = if (entry.data.maybe_node.unwrap()) |value|
                         try Value.fromNode(gpa, tree, value)
@@ -513,7 +545,6 @@ pub const Value = union(enum) {
             .list_one => {
                 const value_index = tree.nodeData(node_index).node;
                 const out_list = try gpa.alloc(Value, 1);
-                errdefer gpa.free(out_list);
                 const value = try Value.fromNode(gpa, tree, value_index);
                 out_list[0] = value;
                 return Value{ .list = out_list };
@@ -521,12 +552,6 @@ pub const Value = union(enum) {
             .list_two => {
                 const list = tree.nodeData(node_index).list;
                 const out_list = try gpa.alloc(Value, 2);
-                errdefer {
-                    for (out_list) |*value| {
-                        value.deinit(gpa);
-                    }
-                    gpa.free(out_list);
-                }
                 for (out_list, &[2]Node.Index{ list.el1, list.el2 }) |*out, value_index| {
                     out.* = try Value.fromNode(gpa, tree, value_index);
                 }
@@ -537,10 +562,6 @@ pub const Value = union(enum) {
                 const list = tree.extraData(Tree.List, extra_index);
 
                 var out_list: std.ArrayListUnmanaged(Value) = .empty;
-                errdefer for (out_list.items) |*value| {
-                    value.deinit(gpa);
-                };
-                defer out_list.deinit(gpa);
                 try out_list.ensureTotalCapacityPrecise(gpa, list.data.list_len);
 
                 var extra_end = list.end;
@@ -664,6 +685,16 @@ pub const ErrorMsg = struct {
     pub fn deinit(err: *ErrorMsg, gpa: Allocator) void {
         gpa.free(err.msg);
     }
+};
+
+pub const Managed = @import("zutil").Managed;
+
+/// Result returned from loading a YAML from source
+pub const LoadYaml = struct {
+    /// The yaml (could be a failure)
+    yaml: error{ParseFailure}!Yaml,
+    /// Parser errors encountered
+    parser_errors: ErrorBundle = .empty,
 };
 
 test {

@@ -1,6 +1,12 @@
 .{
     .name = .zig_yaml,
     .version = "0.1.0",
+    .dependencies = .{
+        .zutil = .{
+            .url = "https://github.com/MiahDrao97/zutil/archive/main.tar.gz",
+            .hash = "zutil-0.0.0-8W_Q7hPGAAAm9ytjgSLG_DM6UeKNTmxEjYvwR7cvA4Q6",
+        },
+    },
     .fingerprint = 0x225b4a67bcb254da, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.1",
     .paths = .{
