@@ -6,6 +6,8 @@ Forked from https://github.com/kubkon/zig-yaml
 
 ## What is it?
 
+Words from kubkon:
+
 This lib is meant to serve as a basic (or maybe not?) YAML parser for Zig. It will strive to be YAML 1.2 compatible
 but one step at a time.
 
@@ -13,6 +15,12 @@ This is very much a work-in-progress, so expect things to break on a regular bas
 community involved in helping out with this btw! Feel free to fork and submit patches, enhancements, and of course
 issues.
 
+Words from me (MiahDrao97):
+
+I wanted to stay on top of the newest Zig releases.
+I found this particular YAML parser the best because it allowed for loading a schema-less YAML file, which is a requirement for my use-case.
+When using the original, I quickly found that it needed to be updated to Zig 0.15, but that wasn't in the main branch yet.
+Also fixed a couple bugs I encountered in my personal usage of it, which resulted in deviating from the original API's.
 
 ## Basic installation
 
@@ -23,21 +31,35 @@ zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
 
 It's more convenient to save the library with a desired name, for example, like this (assuming you are targeting latest release of Zig):
 ```
-zig fetch --save=yaml https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
+zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
 ```
 
-And then add those lines to your project's `build.zig` file:
+And then configure your dependency in your project's `build.zig` file:
 ```zig
-// add that code after "b.installArtifact(exe)" line
-const yaml = b.dependency("yaml", .{
-  .target = target,
-  .optimize = optimize,
-});
-exe.root_module.addImport("yaml", yaml.module("yaml"));
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const yaml_module = b.dependency("zig_yaml", .{}).module("yaml");
+
+    const my_module = b.addModule("my_module", .{
+        .root_source_file = b.path("src/my_module/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "yaml", .module = yaml_module },
+        },
+    });
+
+    // rest of build def...
+}
 ```
 
 After that, you can simply import the zig-yaml library in your project's code by using `const yaml = @import("yaml");`.
 
+Note that main branch leverages zig 0.15.2.
 For zig-0.14, please use any release after `0.1.0`. For pre-zig-0.14 (e.g., zig-0.13), use `0.0.1`.
 
 ## Basic usage
@@ -77,7 +99,7 @@ const load_yaml: Managed(LoadYaml) = try Yaml.load(gpa, source);
 defer load_yaml.deinit(); // all the memory produced from parsing is owned by this managed value
 
 const yaml: Yaml = load_yaml.value.yaml catch |err| {
-    // encountered parse errors: rendering the parse to std err in this example
+    // if we encountered parse errors, we can rendering the errors to a writer (std err in this example)
     load_yaml.value.parser_errors.renderToStdErr(.{ .ttyconf = .detect(.stderr()) });
     return err;
 }
@@ -113,7 +135,9 @@ try std.testing.expectEqual(simple.value.names.len, 3);
 3. To convert `Yaml` structure back into text representation, use `stringify()` method:
 
 ```zig
-try yaml.stringify(std.io.getStdOut().writer());
+var buf: [64]u8 = undefined;
+var stdout: File.Writer = File.stdout().writer(&buf):
+try yaml.stringify(&stdout.interface); // or any writer here
 ```
 
 which should write the following output to standard output when run:
@@ -127,7 +151,7 @@ nested:
 finally: [ 8.17, 19.78, 17, 21  ]
 ```
 
-## Running YAML spec test suite
+## Running YAML spec test suite (WARNING: Not tested since creating this fork)
 
 Remember to clone the repo with submodules first
 
