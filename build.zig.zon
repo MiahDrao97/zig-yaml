@@ -3,12 +3,12 @@
     .version = "0.1.0",
     .dependencies = .{
         .zutil = .{
-            .url = "https://github.com/MiahDrao97/zutil/archive/main.tar.gz",
-            .hash = "zutil-0.0.0-8W_Q7hPGAAAm9ytjgSLG_DM6UeKNTmxEjYvwR7cvA4Q6",
+            .url = "https://github.com/MiahDrao97/zutil/archive/zig-0.16.0-dev.tar.gz",
+            .hash = "zutil-0.0.0-8W_Q7l0BAgBgh8EnZU_vqF-K3he81u1UkkcDo6KyGKbb",
         },
     },
     .fingerprint = 0x225b4a67bcb254da, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.16.0-dev.3039+b490412cd",
     .paths = .{
         "src",
         "test",

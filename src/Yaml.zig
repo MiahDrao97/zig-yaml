@@ -346,7 +346,7 @@ pub const YamlError = error{
 
 pub const StringifyError = error{
     OutOfMemory,
-} || YamlError || std.fs.File.WriteError || std.Io.Writer.Error;
+} || YamlError || std.Io.File.Writer.Error || std.Io.Writer.Error;
 
 pub const List = []Value;
 pub const Map = std.StringArrayHashMapUnmanaged(Value);

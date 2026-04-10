@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const testing = std.testing;
 
+const Io = std.Io;
 const Allocator = mem.Allocator;
 const Yaml = @import("yaml").Yaml;
 const LoadYaml = Yaml.LoadYaml;
@@ -9,14 +10,21 @@ const Managed = Yaml.Managed;
 
 const gpa = testing.allocator;
 
-fn loadFromFile(allocator: Allocator, file_path: []const u8) !Managed(LoadYaml) {
-    const file = try std.fs.cwd().openFile(file_path, .{});
-    defer file.close();
+fn loadFromFile(io: Io, allocator: Allocator, file_path: []const u8) !Managed(LoadYaml) {
+    const file = try Io.Dir.cwd().openFile(io, file_path, .{});
+    defer file.close(io);
 
-    const source = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
-    defer allocator.free(source);
+    var stream: Io.Writer.Allocating = .init(allocator);
+    defer stream.deinit();
 
-    return try Yaml.load(allocator, source);
+    var buf: [1024]u8 = undefined;
+    var reader: Io.File.Reader = file.reader(io, &buf);
+    _ = reader.interface.streamRemaining(&stream.writer) catch |err| return switch (err) {
+        error.WriteFailed => error.OutOfMemory,
+        error.ReadFailed => reader.err.?,
+    };
+
+    return try Yaml.load(allocator, stream.written());
 }
 
 test "simple" {
@@ -56,7 +64,7 @@ test "simple" {
         }
     };
 
-    const load_yaml = try loadFromFile(gpa, "test/simple.yaml");
+    const load_yaml = try loadFromFile(testing.io, gpa, "test/simple.yaml");
     defer load_yaml.deinit();
 
     const parsed: Yaml = try load_yaml.value.yaml;
@@ -187,7 +195,7 @@ const LibTbd = struct {
 };
 
 test "single lib tbd" {
-    const load_yaml = try loadFromFile(gpa, "test/single_lib.tbd");
+    const load_yaml = try loadFromFile(testing.io, gpa, "test/single_lib.tbd");
     defer load_yaml.deinit();
 
     const parsed: Yaml = try load_yaml.value.yaml;
@@ -263,7 +271,7 @@ test "single lib tbd" {
 }
 
 test "multi lib tbd" {
-    var load_yaml = try loadFromFile(gpa, "test/multi_lib.tbd");
+    var load_yaml = try loadFromFile(testing.io, gpa, "test/multi_lib.tbd");
     defer load_yaml.deinit();
 
     const parsed: Yaml = try load_yaml.value.yaml;
