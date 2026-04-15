@@ -75,6 +75,7 @@ const Yaml = @import("yaml").Yaml;
 const Managed = Yaml.Managed;
 const LoadYaml = Yaml.LoadYaml;
 const gpa = std.testing.allocator;
+const io = std.testing.io;
 
 const source =
     \\names: [ John Doe, MacIntosh, Jane Austin ]
@@ -95,7 +96,7 @@ defer load_yaml.deinit(); // all the memory produced from parsing is owned by th
 
 const yaml: Yaml = load_yaml.value.yaml catch |err| {
     // if we encountered parse errors, we can render the errors to a writer (std err in this example)
-    load_yaml.value.parser_errors.renderToStdErr(.{ .ttyconf = .detect(.stderr()) });
+    try load_yaml.value.parser_errors.renderToStdErr(io, .{}, .on);
     return err;
 }
 ```

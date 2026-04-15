@@ -60,7 +60,7 @@ pub fn main(init: std.process.Init) !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const all_args = try std.process.argsAlloc(allocator);
+    const all_args = try init.minimal.args.toSlice(allocator);
     const args = all_args[1..];
 
     const stdout: Io.File = .stdout();
@@ -70,19 +70,14 @@ pub fn main(init: std.process.Init) !void {
     var arg_index: usize = 0;
     while (arg_index < args.len) : (arg_index += 1) {
         if (mem.eql(u8, "-h", args[arg_index]) or mem.eql(u8, "--help", args[arg_index])) {
-            var buf: [usage.len]u8 = undefined;
-            return try stdout.writeStreamingAll(init.io, usage, &buf);
+            return try stdout.writeStreamingAll(init.io, usage);
         } else if (mem.eql(u8, "--debug-log", args[arg_index])) {
             if (arg_index + 1 >= args.len) {
-                const msg = "fatal: expected [scope] after --debug-log\n\n";
-                var buf: [msg.len]u8 = undefined;
-                return try stderr.writeStreamingAll(init.io, msg, &buf);
+                return try stderr.writeStreamingAll(init.io, "fatal: expected [scope] after --debug-log\n\n");
             }
             arg_index += 1;
             if (!build_options.enable_logging) {
-                const msg = "warn: --debug-log will have no effect as program was not built with -Dlog\n\n";
-                var buf: [msg.len]u8 = undefined;
-                return try stderr.writeStreamingAll(init.io, msg, &buf);
+                return try stderr.writeStreamingAll(init.io, "warn: --debug-log will have no effect as program was not built with -Dlog\n\n");
             } else {
                 try log_scopes.append(init.gpa, args[arg_index]);
             }
@@ -92,9 +87,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (file_path == null) {
-        const msg = "fatal: no input path to yaml file specified\n\n";
-        var buf: [msg.len]u8 = undefined;
-        return try stderr.writeStreamingAll(init.io, msg, &buf);
+        return try stderr.writeStreamingAll(init.io, "fatal: no input path to yaml file specified\n\n");
     }
 
     const file = try Io.Dir.cwd().openFile(init.io, file_path.?, .{});
@@ -115,10 +108,10 @@ pub fn main(init: std.process.Init) !void {
     defer load_yaml.deinit();
 
     const yaml: Yaml = load_yaml.value.yaml catch |err| {
-        load_yaml.value.parser_errors.renderToStdErr(.{ .ttyconf = .detect(.stderr()) });
+        try load_yaml.value.parser_errors.renderToStderr(init.io, .{}, .auto);
         return err;
     };
 
-    var writer = stdout.writer(&.{});
+    var writer = stdout.writer(init.io, &.{});
     try yaml.stringify(&writer.interface);
 }
