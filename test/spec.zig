@@ -6,6 +6,7 @@ const Io = std.Io;
 const Allocator = mem.Allocator;
 const Step = std.Build.Step;
 const SpecTest = @This();
+const TestCaseMap = std.array_hash_map.String(Testcase);
 
 pub const base_id: Step.Id = .custom;
 
@@ -19,30 +20,44 @@ const preamble =
     \\
     \\const std = @import("std");
     \\const testing = std.testing;
+    \\const Io = std.Io;
     \\
     \\const Yaml = @import("yaml").Yaml;
     \\
     \\const alloc = testing.allocator;
     \\
-    \\fn loadFromFile(file_path: []const u8) !Yaml {
-    \\    const file = try std.fs.openFileAbsolute(file_path, .{});
-    \\    defer file.close();
+    \\fn loadFromFile(io: Io, file_path: []const u8) !Yaml {
+    \\    const file = try Io.Dir.openFileAbsolute(io, file_path, .{});
+    \\    defer file.close(io);
     \\
-    \\    const source = try file.readToEndAlloc(alloc, std.math.maxInt(u32));
-    \\    defer alloc.free(source);
+    \\    var stream: Io.Writer.Allocating = .init(alloc);
+    \\    defer stream.deinit();
     \\
-    \\    var yaml: Yaml = .{ .source = source };
-    \\    errdefer yaml.deinit(alloc);
-    \\    try yaml.load(alloc);
-    \\    return yaml;
+    \\    var reader = file.reader(io, &.{});
+    \\    _ = reader.interface.streamRemaining(&stream.writer) catch |err| return switch (err) {
+    \\        error.WriteFailed => error.OutOfMemory,
+    \\        error.ReadFailed => reader.err.?,
+    \\    };
+    \\    const source = stream.written();
+    \\
+    \\    const load_yaml = try Yaml.load(alloc, source);
+    \\    errdefer load_yaml.deinit();
+    \\    return try load_yaml.value.yaml;
     \\}
     \\
-    \\fn loadFileString(file_path: []const u8) ![]u8 {
-    \\    const file = try std.fs.openFileAbsolute(file_path, .{});
-    \\    defer file.close();
+    \\fn loadFileString(io: Io, file_path: []const u8) ![]u8 {
+    \\    const file = try Io.Dir.openFileAbsolute(io, file_path, .{});
+    \\    defer file.close(io);
     \\
-    \\    const source = try file.readToEndAlloc(alloc, std.math.maxInt(u32));
-    \\    return source;
+    \\    var stream: Io.Writer.Allocating = .init(alloc);
+    \\    defer stream.deinit();
+    \\
+    \\    var reader = file.reader(io, &.{});
+    \\    _ = reader.interface.streamRemaining(&stream.writer) catch |err| return switch (err) {
+    \\        error.WriteFailed => error.OutOfMemory,
+    \\        error.ReadFailed => reader.err.?,
+    \\    };
+    \\    return stream.written();
     \\}
     \\
 ;
@@ -75,12 +90,13 @@ const Testcase = struct {
 
 fn make(step: *Step, make_options: Step.MakeOptions) !void {
     _ = make_options;
+    const io: Io = Io.Threaded.global_single_threaded.io();
 
     const spec_test: *SpecTest = @fieldParentPtr("step", step);
     const b = step.owner;
 
-    const cwd = std.fs.cwd();
-    cwd.access("test/yaml-test-suite/tags", .{}) catch {
+    const cwd = Io.Dir.cwd();
+    cwd.access(io, "test/yaml-test-suite/tags", .{}) catch {
         return spec_test.step.fail("Testfiles not found, make sure you have loaded the submodule.", .{});
     };
     if (b.graph.host.result.os.tag == .windows) {
@@ -91,16 +107,16 @@ fn make(step: *Step, make_options: Step.MakeOptions) !void {
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
 
-    var testcases = std.StringArrayHashMap(Testcase).init(arena);
+    var testcases: TestCaseMap = .empty;
 
     const root_data_path = try fs.path.join(arena, &[_][]const u8{
         b.build_root.path.?,
         "test/yaml-test-suite",
     });
 
-    const root_data_dir = try std.fs.openDirAbsolute(root_data_path, .{});
+    const root_data_dir = try Io.Dir.openDirAbsolute(io, root_data_path, .{});
 
-    var itdir = try root_data_dir.openDir("tags", .{
+    var itdir = try root_data_dir.openDir(io, "tags", .{
         .iterate = true,
         .access_sub_paths = true,
     });
@@ -109,10 +125,10 @@ fn make(step: *Step, make_options: Step.MakeOptions) !void {
     defer walker.deinit();
 
     loop: {
-        while (walker.next()) |maybe_entry| {
+        while (walker.next(io)) |maybe_entry| {
             if (maybe_entry) |entry| {
                 if (entry.kind != .sym_link) continue;
-                collectTest(arena, entry, &testcases) catch |err| switch (err) {
+                collectTest(io, arena, entry, &testcases) catch |err| switch (err) {
                     error.OutOfMemory => @panic("OOM"),
                     else => |e| return e,
                 };
@@ -153,19 +169,20 @@ fn make(step: *Step, make_options: Step.MakeOptions) !void {
     const sub_path = b.pathJoin(&.{ &digest, test_filename });
     const sub_path_dirname = fs.path.dirname(sub_path).?;
 
-    b.cache_root.handle.makePath(sub_path_dirname) catch |err| {
-        return step.fail("unable to make path '{?s}{s}': {any}", .{ b.cache_root.path, sub_path_dirname, err });
+    const file_out = b.cache_root.handle.openFile(io, sub_path_dirname, .{ .mode = .write_only }) catch |err| {
+        return step.fail("unable to make path '{?s}{s}': {t}", .{ b.cache_root.path, sub_path_dirname, err });
     };
+    defer file_out.close(io);
 
-    b.cache_root.handle.writeFile(.{ .sub_path = sub_path, .data = output.written() }) catch |err| {
-        return step.fail("unable to write file: {}", .{err});
+    file_out.writeStreamingAll(io, output.written()) catch |err| {
+        return step.fail("unable to write file '{?s}{s}': {t}", .{ b.cache_root.path, sub_path_dirname, err });
     };
     spec_test.output_file.path = try b.cache_root.join(b.allocator, &.{sub_path});
     try man.writeManifest();
 }
 
-fn collectTest(arena: Allocator, entry: fs.Dir.Walker.Entry, testcases: *std.StringArrayHashMap(Testcase)) !void {
-    var path_components_it = try std.fs.path.componentIterator(entry.path);
+fn collectTest(io: Io, arena: Allocator, entry: Io.Dir.Walker.Entry, testcases: *TestCaseMap) !void {
+    var path_components_it = std.fs.path.componentIterator(entry.path);
     const first_path = path_components_it.first().?;
 
     var path_components: std.ArrayList([]const u8) = .empty;
@@ -174,7 +191,7 @@ fn collectTest(arena: Allocator, entry: fs.Dir.Walker.Entry, testcases: *std.Str
     }
 
     const remaining_path = try fs.path.join(arena, path_components.items);
-    const result = try testcases.getOrPut(remaining_path);
+    const result = try testcases.getOrPut(arena, remaining_path);
 
     if (!result.found_existing) {
         result.key_ptr.* = remaining_path;
@@ -183,15 +200,24 @@ fn collectTest(arena: Allocator, entry: fs.Dir.Walker.Entry, testcases: *std.Str
             entry.basename,
             "in.yaml",
         });
-        const real_in_path = try entry.dir.realpathAlloc(arena, in_path);
+        const real_in_path = try entry.dir.realPathFileAlloc(io, in_path, arena);
 
         const name_file_path = try fs.path.join(arena, &[_][]const u8{
             entry.basename,
             "===",
         });
-        const name_file = try entry.dir.openFile(name_file_path, .{});
-        defer name_file.close();
-        const name = try name_file.readToEndAlloc(arena, std.math.maxInt(u32));
+        const name_file = try entry.dir.openFile(io, name_file_path, .{});
+        defer name_file.close(io);
+
+        var buf: [1024]u8 = undefined;
+        var reader: Io.File.Reader = name_file.reader(io, &buf);
+        var stream: Io.Writer.Allocating = .init(arena);
+        _ = reader.interface.streamRemaining(&stream.writer) catch |err| return switch (err) {
+            error.WriteFailed => error.OutOfMemory,
+            error.ReadFailed => reader.err.?,
+        };
+
+        const name = stream.written();
 
         var tag_set = std.BufSet.init(arena);
         try tag_set.insert(first_path.name);
@@ -222,10 +248,10 @@ fn collectTest(arena: Allocator, entry: fs.Dir.Walker.Entry, testcases: *std.Str
             "error",
         });
 
-        if (canAccess(entry.dir, out_path)) {
-            const real_out_path = try entry.dir.realpathAlloc(arena, out_path);
+        if (canAccess(io, entry.dir, out_path)) {
+            const real_out_path = try entry.dir.realPathFileAlloc(io, out_path, arena);
             result.value_ptr.result = .{ .expected_output_path = real_out_path };
-        } else if (canAccess(entry.dir, err_path)) {
+        } else if (canAccess(io, entry.dir, err_path)) {
             result.value_ptr.result = .{ .error_expected = {} };
         }
     } else {
@@ -631,8 +657,8 @@ fn emitTest(arena: Allocator, output: *Io.Writer, testcase: Testcase) !void {
     try output.writeAll("}\n\n");
 }
 
-fn canAccess(dir: fs.Dir, file_path: []const u8) bool {
-    if (dir.access(file_path, .{})) {
+fn canAccess(io: Io, dir: Io.Dir, file_path: []const u8) bool {
+    if (dir.access(io, file_path, .{})) {
         return true;
     } else |_| {
         return false;

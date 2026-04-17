@@ -174,7 +174,7 @@ test "simple flow sequence / bracket list with invalid comment" {
     defer load_yaml.deinit();
 
     try std.testing.expectError(error.ParseFailure, load_yaml.value.yaml);
-    // load_yaml.value.parser_errors.renderToStdErr(.{ .ttyconf = .detect(.stderr()) });
+    // try load_yaml.value.parser_errors.renderToStdErr(testing.io, .{}, .on);
 }
 
 test "simple flow sequence / bracket list with double trailing commas" {
@@ -185,7 +185,7 @@ test "simple flow sequence / bracket list with double trailing commas" {
     defer load_yaml.deinit();
 
     try std.testing.expectError(error.ParseFailure, load_yaml.value.yaml);
-    // load_yaml.value.parser_errors.renderToStdErr(.{ .ttyconf = .detect(.stderr()) });
+    // try load_yaml.value.parser_errors.renderToStdErr(testing.io, .{}, .on);
 }
 
 test "more bools" {

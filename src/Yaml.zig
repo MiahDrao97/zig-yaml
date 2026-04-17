@@ -2,7 +2,20 @@ const std = @import("std");
 const assert = std.debug.assert;
 const math = std.math;
 const mem = std.mem;
-const log = std.log.scoped(.yaml);
+
+const log = if (@import("builtin").is_test) struct {
+    var null_logger: std.Io.Writer.Discarding = .init(&.{});
+
+    fn err(comptime format: []const u8, args: anytype) void {
+        // this at least ensure that we're compiling our format correctly
+        null_logger.writer.print(format, args) catch {};
+    }
+
+    fn debug(comptime format: []const u8, args: anytype) void {
+        // this at least ensure that we're compiling our format correctly
+        null_logger.writer.print(format, args) catch {};
+    }
+} else std.log.scoped(.yaml);
 
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -346,7 +359,7 @@ pub const YamlError = error{
 
 pub const StringifyError = error{
     OutOfMemory,
-} || YamlError || std.fs.File.WriteError || std.Io.Writer.Error;
+} || YamlError || std.Io.File.Writer.Error || std.Io.Writer.Error;
 
 pub const List = []Value;
 pub const Map = std.StringArrayHashMapUnmanaged(Value);
@@ -687,7 +700,78 @@ pub const ErrorMsg = struct {
     }
 };
 
-pub const Managed = @import("zutil").Managed;
+/// A managed value is useful when memory won't be or can't be freed after doing the work to create said value.
+/// However, when this managed value is freed, all memory allocated when it was created will also be freed.
+/// Ripped from MiahDrao97's utility library: https://github.com/MiahDrao97/zutil/blob/main/src/root.zig#L24
+/// It's not worth having a whole dependency just for this single type.
+pub fn Managed(comptime T: type) type {
+    return struct {
+        /// Value itself
+        value: T,
+        /// Arena used to create the managed value
+        arena: ArenaAllocator,
+
+        /// Create a new managed value.
+        /// Returns `self.*` (usually because you're returning this managed value or passing it as an argument).
+        /// This requires a 2-step initialization. Example:
+        /// ```zig
+        /// var managed: Managed(T) = undefined;
+        /// _ = try managed.create(gpa, ctx, @TypeOf(ctx).initValue);
+        /// ```
+        pub fn create(
+            self: *Managed(T),
+            gpa: Allocator,
+            context: anytype,
+            initFn: fn (@TypeOf(context), Allocator) anyerror!T,
+        ) !Managed(T) {
+            self.arena = .init(gpa);
+            errdefer self.arena.deinit();
+
+            self.value = try initFn(context, self.arena.allocator());
+            return self.*;
+        }
+
+        /// Destroy the managed value and all memory allocated when creating it.
+        pub fn deinit(self: Managed(T)) void {
+            self.arena.deinit();
+        }
+
+        test create {
+            const Val = struct {
+                str: []const u8,
+            };
+
+            // success
+            {
+                const init_ctx: struct {
+                    fn initValue(_: @This(), gpa: Allocator) anyerror!Val {
+                        return .{ .str = try gpa.dupe(u8, "test") };
+                    }
+                } = .{};
+
+                var val: Managed(Val) = undefined;
+                _ = try val.create(std.testing.allocator, init_ctx, @TypeOf(init_ctx).initValue);
+                defer val.deinit();
+
+                try std.testing.expectEqualStrings("test", val.value.str);
+            }
+            // failure
+            {
+                const init_ctx: struct {
+                    fn initValue(_: @This(), _: Allocator) anyerror!Val {
+                        return error.OutOfMemory;
+                    }
+                } = .{};
+
+                var val: Managed(Val) = undefined;
+                try std.testing.expectError(
+                    error.OutOfMemory,
+                    val.create(std.testing.allocator, init_ctx, @TypeOf(init_ctx).initValue),
+                );
+            }
+        }
+    };
+}
 
 /// Result returned from loading a YAML from source
 pub const LoadYaml = struct {
@@ -699,4 +783,5 @@ pub const LoadYaml = struct {
 
 test {
     _ = @import("Yaml/test.zig");
+    _ = Managed(void);
 }
