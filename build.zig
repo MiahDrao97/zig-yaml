@@ -6,14 +6,10 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const enable_logging = b.option(bool, "log", "Whether to enable logging") orelse false;
-    const zutil_module = b.dependency("zutil", .{}).module("zutil");
     const yaml_module = b.addModule("yaml", .{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = "zutil", .module = zutil_module },
-        },
     });
 
     const yaml_tests = b.addTest(.{
