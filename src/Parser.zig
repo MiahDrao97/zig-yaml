@@ -268,12 +268,19 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         self.eatCommentsAndSpace(&.{});
 
         // Parse key
-        const key_pos = self.token_it.pos;
+        const key_pos: Token.Index = self.token_it.pos;
         if (self.getCol(key_pos) < col) break;
 
-        const key = self.token_it.next() orelse return error.UnexpectedEof;
+        const key: *Token = self.token_it.nextPtr() orelse return error.UnexpectedEof;
         switch (key.id) {
-            .literal, .single_quoted, .double_quoted => {},
+            .literal => {},
+            .single_quoted, .double_quoted => {
+                // This skips the quotes:
+                // Since this quoted token is a key, we have to retroactively remove them from the token and pretend it's a literal going forward.
+                key.loc.start += 1;
+                key.loc.end -= 1;
+                key.id = .literal;
+            },
             .doc_start, .doc_end, .eof => {
                 self.token_it.seekBy(-1);
                 break;
