@@ -3,8 +3,8 @@
     .version = "0.1.0",
     .dependencies = .{
         .zutil = .{
-            .url = "https://github.com/MiahDrao97/zutil/archive/zig-0.16.0-dev.tar.gz",
-            .hash = "zutil-0.0.0-8W_Q7l0BAgBgh8EnZU_vqF-K3he81u1UkkcDo6KyGKbb",
+            .url = "https://github.com/MiahDrao97/zutil/archive/refs/tags/v0.1.0.tar.gz",
+            .hash = "zutil-0.1.0-8W_Q7qYBAgCx3VTvXwyB7EN0AQfQtVgpXQr_AEMUgW6D",
         },
     },
     .fingerprint = 0x225b4a67bcb254da, // Changing this has security and trust implications.
