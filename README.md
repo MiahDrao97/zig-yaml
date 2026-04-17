@@ -22,11 +22,19 @@ I found this particular YAML parser the best because it allowed for loading a sc
 When using the original, I quickly found that it needed to be updated to Zig 0.15, but that wasn't in the main branch yet.
 Also fixed a couple bugs I encountered in my personal usage of it, which resulted in deviating from the original API's.
 
+At the present, we're updated to 0.16.0 in the main branch.
+
 ## Basic installation
 
-The library can be installed using the Zig tools. First, you need to fetch the required release of the library into your project. 
+The library can be installed using the Zig tools. First, you need to fetch the required release of the library into your project.
+Use the main branch here (uses Zig 0.16.0 and may have breaking changes):
 ```
 zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
+```
+
+If you're on Zig 0.15.1, use v0.1.0:
+```
+zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/refs/tags/v0.1.0.tar.gz
 ```
 
 And then configure your dependency in your project's `build.zig` file:
@@ -53,9 +61,6 @@ pub fn build(b: *std.Build) void {
 ```
 
 After that, you can simply import the zig-yaml library in your project's code by using `const yaml = @import("yaml");`.
-
-Note that main branch leverages zig 0.15.2.
-For zig-0.14, please use any release after `0.1.0`. For pre-zig-0.14 (e.g., zig-0.13), use `0.0.1`.
 
 ## Basic usage
 
