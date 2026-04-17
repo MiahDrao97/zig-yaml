@@ -657,3 +657,50 @@ test "unquoted literal containing colon" {
         .eof,
     });
 }
+
+test "unquoted literal containing dash" {
+    if (true) {
+        return error.SkipZigTest;
+    }
+    try testExpected(
+        \\key1: la-la-la-la
+        \\key2: Value with dash - oh my
+        \\key3: Value with dash --- WAHHHHH
+    , &[_]Token.Id{
+        // key1
+        .literal,
+        .map_value_ind,
+        .space,
+        .literal, // la-la-la-la
+        .new_line,
+        // key2
+        .literal,
+        .map_value_ind,
+        .space,
+        .literal, // Value with dash - oh my
+        .new_line,
+        // key3
+        .literal,
+        .map_value_ind,
+        .space,
+        .literal, // Value with dash --- WAHHHHH
+        .eof,
+    });
+}
+
+test "quoted key" {
+    try testExpected(
+        \\'400':
+        \\  thing1: thing2
+    , &[_]Token.Id{
+        .single_quoted,
+        .map_value_ind,
+        .new_line,
+        .space,
+        .literal,
+        .map_value_ind,
+        .space,
+        .literal,
+        .eof,
+    });
+}

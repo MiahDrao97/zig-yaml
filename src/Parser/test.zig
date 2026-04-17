@@ -606,9 +606,15 @@ test "inline list as mapping value" {
 }
 
 fn parseSuccess(comptime source: []const u8) !void {
-    var parser = try Parser.init(testing.allocator, source);
-    defer parser.deinit(testing.allocator);
-    try parser.parse(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+
+    var parser = try Parser.init(arena.allocator(), source);
+    parser.parse(arena.allocator()) catch |err| {
+        const errors: std.zig.ErrorBundle = try parser.errors.toOwnedBundle("");
+        errors.renderToStderr(testing.io, .{}, .on) catch {};
+        return err;
+    };
 }
 
 fn parseError(comptime source: []const u8, err: Parser.ParseError) !void {
@@ -925,4 +931,17 @@ test "expect map separator" {
         \\~~~~^
         \\
     , .{});
+}
+
+test "key in quotes" {
+    try parseSuccess("'400': 'thing'");
+    try parseSuccess("\"400\": \"thing\"");
+    try parseSuccess(
+        \\'400':
+        \\  thing1: thing2
+    );
+    try parseSuccess(
+        \\"400":
+        \\  thing1: thing2
+    );
 }

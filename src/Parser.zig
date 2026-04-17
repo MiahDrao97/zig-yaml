@@ -153,9 +153,13 @@ fn value(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
             self.token_it.seekTo(pos);
             return self.leafValue(gpa);
         },
-        .single_quoted, .double_quoted => {
+        .single_quoted, .double_quoted => if (self.eatToken(.map_value_ind, &.{ .new_line, .comment })) |_| {
+            // map
+            self.token_it.seekTo(pos);
+            return self.map(gpa);
+        } else {
             // leaf value
-            self.token_it.seekBy(-1);
+            self.token_it.seekTo(pos);
             return self.leafValue(gpa);
         },
         .seq_item_ind => {
@@ -269,7 +273,7 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
 
         const key = self.token_it.next() orelse return error.UnexpectedEof;
         switch (key.id) {
-            .literal => {},
+            .literal, .single_quoted, .double_quoted => {},
             .doc_start, .doc_end, .eof => {
                 self.token_it.seekBy(-1);
                 break;
