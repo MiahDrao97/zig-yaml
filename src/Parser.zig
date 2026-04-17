@@ -276,7 +276,7 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
             .literal => {},
             .single_quoted, .double_quoted => {
                 // This skips the quotes:
-                // Since this quoted token is a key, we have to retroactively remove them from the token and pretend it's a literal going forward.
+                // Since this quoted token is a key, we have to retroactively remove the quotes from the token and pretend it's a literal going forward.
                 key.loc.start += 1;
                 key.loc.end -= 1;
                 key.id = .literal;

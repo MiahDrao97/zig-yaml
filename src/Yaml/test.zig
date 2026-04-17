@@ -949,7 +949,7 @@ test "parse with quoted key" {
     {
         const source =
             \\"400":
-            \\  'thing1': thing2
+            \\  'thing1': "thing2"
         ;
 
         const load_yaml: Managed(LoadYaml) = try Yaml.load(testing.allocator, source);
