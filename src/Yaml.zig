@@ -702,6 +702,8 @@ pub const ErrorMsg = struct {
 
 /// A managed value is useful when memory won't be or can't be freed after doing the work to create said value.
 /// However, when this managed value is freed, all memory allocated when it was created will also be freed.
+/// Ripped from MiahDrao97's utility library: https://github.com/MiahDrao97/zutil/blob/main/src/root.zig#L24
+/// It's not worth having a whole dependency just for this single type.
 pub fn Managed(comptime T: type) type {
     return struct {
         /// Value itself
