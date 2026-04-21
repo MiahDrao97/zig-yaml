@@ -933,6 +933,15 @@ test "expect map separator" {
     , .{});
 }
 
+test "dash in value" {
+    try parseSuccess(
+        \\key: this has a dash - oh my
+    );
+    try parseSuccess(
+        \\key: this has multiple dashes --- oh dear
+    );
+}
+
 test "key in quotes" {
     try parseSuccess("'400': 'thing'");
     try parseSuccess("\"400\": \"thing\"");

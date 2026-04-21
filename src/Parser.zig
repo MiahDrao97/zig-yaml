@@ -545,12 +545,20 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
 
                 return node_index.toOptional();
             },
-            .literal => {},
+            .literal, .seq_item_ind, .doc_start => {
+                // unquoted values can contain dashes
+            },
             .space => {
-                const trailing = @intFromEnum(self.token_it.pos) - 2;
+                const trailing: u32 = @intFromEnum(self.token_it.pos) - 2;
+                const current_line: usize = self.getLine(@enumFromInt(trailing));
                 self.eatCommentsAndSpace(&.{});
                 if (self.token_it.peek()) |peek| {
-                    if (peek.id != .literal) {
+                    const same_line: bool = self.getLine(self.token_it.pos) == current_line;
+                    if (peek.id != .literal and !(same_line and switch (peek.id) {
+                        // ignore dashes if we're still on the same line
+                        .seq_item_ind, .doc_start => true,
+                        else => false,
+                    })) {
                         const node_end: Token.Index = @enumFromInt(trailing);
                         log.debug("(leaf) {s}", .{self.rawString(node_start, node_end)});
                         self.nodes.set(@intFromEnum(node_index), .{
