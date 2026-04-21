@@ -153,9 +153,13 @@ fn value(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
             self.token_it.seekTo(pos);
             return self.leafValue(gpa);
         },
-        .single_quoted, .double_quoted => {
+        .single_quoted, .double_quoted => if (self.eatToken(.map_value_ind, &.{ .new_line, .comment })) |_| {
+            // map
+            self.token_it.seekTo(pos);
+            return self.map(gpa);
+        } else {
             // leaf value
-            self.token_it.seekBy(-1);
+            self.token_it.seekTo(pos);
             return self.leafValue(gpa);
         },
         .seq_item_ind => {
@@ -264,12 +268,19 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         self.eatCommentsAndSpace(&.{});
 
         // Parse key
-        const key_pos = self.token_it.pos;
+        const key_pos: Token.Index = self.token_it.pos;
         if (self.getCol(key_pos) < col) break;
 
-        const key = self.token_it.next() orelse return error.UnexpectedEof;
+        const key: *Token = self.token_it.nextPtr() orelse return error.UnexpectedEof;
         switch (key.id) {
             .literal => {},
+            .single_quoted, .double_quoted => {
+                // This skips the quotes:
+                // Since this quoted token is a key, we have to retroactively remove the quotes from the token and pretend it's a literal going forward.
+                key.loc.start += 1;
+                key.loc.end -= 1;
+                key.id = .literal;
+            },
             .doc_start, .doc_end, .eof => {
                 self.token_it.seekBy(-1);
                 break;
@@ -534,12 +545,20 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
 
                 return node_index.toOptional();
             },
-            .literal => {},
+            .literal, .seq_item_ind, .doc_start => {
+                // unquoted values can contain dashes
+            },
             .space => {
-                const trailing = @intFromEnum(self.token_it.pos) - 2;
+                const trailing: u32 = @intFromEnum(self.token_it.pos) - 2;
+                const current_line: usize = self.getLine(@enumFromInt(trailing));
                 self.eatCommentsAndSpace(&.{});
                 if (self.token_it.peek()) |peek| {
-                    if (peek.id != .literal) {
+                    const same_line: bool = self.getLine(self.token_it.pos) == current_line;
+                    if (peek.id != .literal and !(same_line and switch (peek.id) {
+                        // ignore dashes if we're still on the same line
+                        .seq_item_ind, .doc_start => true,
+                        else => false,
+                    })) {
                         const node_end: Token.Index = @enumFromInt(trailing);
                         log.debug("(leaf) {s}", .{self.rawString(node_start, node_end)});
                         self.nodes.set(@intFromEnum(node_index), .{

@@ -919,3 +919,87 @@ test "duplicate key error" {
     ;
     try testing.expectError(error.DuplicateMapKey, Yaml.load(testing.allocator, source));
 }
+
+test "parse with dashes in value" {
+    {
+        const source = "key: this has a dash - oh my";
+
+        const load_yaml: Managed(LoadYaml) = try Yaml.load(testing.allocator, source);
+        defer load_yaml.deinit();
+
+        const yaml: Yaml = load_yaml.value.yaml catch |err| {
+            try load_yaml.value.parser_errors.renderToStderr(testing.io, .{}, .on);
+            return err;
+        };
+        if (yaml.rootObject().get("key")) |val| {
+            try testing.expectEqualStrings("this has a dash - oh my", val.asScalar() orelse return error.ValueWasNotScalar);
+        } else return error.KeyNotFound;
+    }
+    {
+        const source = "key: this has many dashes --- oh dear";
+
+        const load_yaml: Managed(LoadYaml) = try Yaml.load(testing.allocator, source);
+        defer load_yaml.deinit();
+
+        const yaml: Yaml = load_yaml.value.yaml catch |err| {
+            try load_yaml.value.parser_errors.renderToStderr(testing.io, .{}, .on);
+            return err;
+        };
+        if (yaml.rootObject().get("key")) |val| {
+            try testing.expectEqualStrings("this has many dashes --- oh dear", val.asScalar() orelse return error.ValueWasNotScalar);
+        } else return error.KeyNotFound;
+    }
+}
+
+test "parse with quoted key" {
+    {
+        const source =
+            \\'400':
+            \\  thing1: thing2
+        ;
+
+        const load_yaml: Managed(LoadYaml) = try Yaml.load(testing.allocator, source);
+        defer load_yaml.deinit();
+
+        const yaml: Yaml = load_yaml.value.yaml catch |err| {
+            try load_yaml.value.parser_errors.renderToStderr(testing.io, .{}, .on);
+            return err;
+        };
+
+        const root: Yaml.Map = yaml.rootObject();
+        const obj400: Yaml.Map = map: {
+            if (root.get("400")) |obj| {
+                break :map obj.asMap() orelse return error.WasNotAnObj;
+            }
+            return error.KeyNotFound;
+        };
+        if (obj400.get("thing1")) |thing1| {
+            if (thing1.asScalar()) |thing2| try testing.expectEqualStrings("thing2", thing2) else return error.WasNotScalar;
+        } else return error.KeyNotFound;
+    }
+    {
+        const source =
+            \\"400":
+            \\  'thing1': "thing2"
+        ;
+
+        const load_yaml: Managed(LoadYaml) = try Yaml.load(testing.allocator, source);
+        defer load_yaml.deinit();
+
+        const yaml: Yaml = load_yaml.value.yaml catch |err| {
+            try load_yaml.value.parser_errors.renderToStderr(testing.io, .{}, .on);
+            return err;
+        };
+
+        const root: Yaml.Map = yaml.rootObject();
+        const obj400: Yaml.Map = map: {
+            if (root.get("400")) |obj| {
+                break :map obj.asMap() orelse return error.WasNotAnObj;
+            }
+            return error.KeyNotFound;
+        };
+        if (obj400.get("thing1")) |thing1| {
+            if (thing1.asScalar()) |thing2| try testing.expectEqualStrings("thing2", thing2) else return error.WasNotScalar;
+        } else return error.KeyNotFound;
+    }
+}

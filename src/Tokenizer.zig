@@ -51,7 +51,7 @@ pub const Token = struct {
 };
 
 pub const TokenIterator = struct {
-    buffer: []const Token,
+    buffer: []Token,
     pos: Token.Index = @enumFromInt(0),
 
     pub fn next(self: *TokenIterator) ?Token {
@@ -60,10 +60,22 @@ pub const TokenIterator = struct {
         return token;
     }
 
+    pub fn nextPtr(self: *TokenIterator) ?*Token {
+        const token = self.peekPtr() orelse return null;
+        self.pos = @enumFromInt(@intFromEnum(self.pos) + 1);
+        return token;
+    }
+
     pub fn peek(self: TokenIterator) ?Token {
         const pos = @intFromEnum(self.pos);
         if (pos >= self.buffer.len) return null;
         return self.buffer[pos];
+    }
+
+    pub fn peekPtr(self: *TokenIterator) ?*Token {
+        const pos = @intFromEnum(self.pos);
+        if (pos >= self.buffer.len) return null;
+        return &self.buffer[pos];
     }
 
     pub fn reset(self: *TokenIterator) void {
@@ -654,6 +666,23 @@ test "unquoted literal containing colon" {
         .map_value_ind,
         .space,
         .literal, // val::ue
+        .eof,
+    });
+}
+
+test "quoted key" {
+    try testExpected(
+        \\'400':
+        \\  thing1: thing2
+    , &[_]Token.Id{
+        .single_quoted,
+        .map_value_ind,
+        .new_line,
+        .space,
+        .literal,
+        .map_value_ind,
+        .space,
+        .literal,
         .eof,
     });
 }
