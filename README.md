@@ -20,16 +20,20 @@ issues.
 I wanted to stay on top of the newest Zig releases.
 I found this particular YAML parser the best because it allowed for loading a schema-less YAML file, which is a requirement for my use-case.
 When using the original, I quickly found that it needed to be updated to Zig 0.15, but that wasn't in the main branch yet.
+Same happened with Zig 0.16.0.
 Also fixed a couple bugs I encountered in my personal usage of it, which resulted in deviating from the original API's.
-
-At the present, we're updated to 0.16.0 in the main branch.
 
 ## Basic installation
 
 The library can be installed using the Zig tools. First, you need to fetch the required release of the library into your project.
-Use the main branch here (uses Zig 0.16.0 and may have breaking changes):
+Use the main branch here (uses latest stable Zig version and may have breaking feature changes):
 ```
 zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/main.tar.gz
+```
+
+If you're on Zig 0.16.0, use v0.2.0:
+```
+zig fetch --save https://github.com/MiahDrao97/zig-yaml/archive/refs/tags/v0.2.0.tar.gz
 ```
 
 If you're on Zig 0.15.1, use v0.1.0:
