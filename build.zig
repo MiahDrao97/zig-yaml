@@ -35,9 +35,6 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(example);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
 
     const run_step = b.step("run", "Run example program parser");
     run_step.dependOn(&run_cmd.step);

@@ -206,9 +206,9 @@ fn parseUnion(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
     const union_info = @typeInfo(T).@"union";
 
     if (union_info.tag_type) |_| {
-        inline for (union_info.fields) |field| {
-            if (self.parseValue(arena, field.type, value)) |u_value| {
-                return @unionInit(T, field.name, u_value);
+        inline for (union_info.field_names, 0..) |field, i| {
+            if (self.parseValue(arena, union_info.field_types[i], value)) |u_value| {
+                return @unionInit(T, field, u_value);
             } else |err| switch (err) {
                 error.InvalidCharacter => {},
                 error.TypeMismatch => {},
@@ -231,32 +231,32 @@ fn parseStruct(self: Yaml, arena: Allocator, comptime T: type, map: Map) Error!T
     const struct_info = @typeInfo(T).@"struct";
     var parsed: T = undefined;
 
-    inline for (struct_info.fields) |field| {
-        var value: ?Value = map.get(field.name) orelse blk: {
-            const field_name = try mem.replaceOwned(u8, arena, field.name, "_", "-");
+    inline for (struct_info.field_names, 0..) |field, i| {
+        var value: ?Value = map.get(field) orelse blk: {
+            const field_name = try mem.replaceOwned(u8, arena, field, "_", "-");
             break :blk map.get(field_name);
         };
 
-        if (@typeInfo(field.type) == .optional) {
+        if (@typeInfo(struct_info.field_types[i]) == .optional) {
             if (value == null) blk: {
-                const maybe_default_value = field.defaultValue() orelse break :blk;
+                const maybe_default_value = struct_info.field_attrs[i].defaultValue(struct_info.field_types[i]) orelse break :blk;
                 value = Value.encode(arena, maybe_default_value) catch break :blk;
             }
-            @field(parsed, field.name) = try self.parseOptional(arena, field.type, value);
+            @field(parsed, field) = try self.parseOptional(arena, struct_info.field_types[i], value);
             continue;
         }
 
-        if (field.defaultValue()) |default_value| {
+        if (struct_info.field_attrs[i].defaultValue(struct_info.field_types[i])) |default_value| {
             if (value == null) blk: {
                 value = Value.encode(arena, default_value) catch break :blk;
             }
         }
 
         const unwrapped = value orelse {
-            log.debug("missing struct field: {s}: {s}", .{ field.name, @typeName(field.type) });
+            log.debug("missing struct field: {s}: {s}", .{ field, @typeName(struct_info.field_types[i]) });
             return error.StructFieldMissing;
         };
-        @field(parsed, field.name) = try self.parseValue(arena, field.type, unwrapped);
+        @field(parsed, field) = try self.parseValue(arena, struct_info.field_types[i], unwrapped);
     }
 
     return parsed;
@@ -495,11 +495,11 @@ pub const Value = union(enum) {
         switch (tag) {
             .doc => {
                 const inner = tree.nodeData(node_index).maybe_node.unwrap() orelse return .empty;
-                return Value.fromNode(gpa, tree, inner);
+                return .fromNode(gpa, tree, inner);
             },
             .doc_with_directive => {
                 const inner = tree.nodeData(node_index).doc_with_directive.maybe_node.unwrap() orelse return .empty;
-                return Value.fromNode(gpa, tree, inner);
+                return .fromNode(gpa, tree, inner);
             },
             .map_single => {
                 const entry = tree.nodeData(node_index).map;
@@ -517,11 +517,11 @@ pub const Value = union(enum) {
                 }
 
                 gop.value_ptr.* = if (entry.maybe_node.unwrap()) |value|
-                    try Value.fromNode(gpa, tree, value)
+                    try .fromNode(gpa, tree, value)
                 else
                     .empty;
 
-                return Value{ .map = out_map };
+                return .{ .map = out_map };
             },
             .map_many => {
                 const extra_index = tree.nodeData(node_index).extra;
@@ -545,22 +545,22 @@ pub const Value = union(enum) {
                     }
 
                     gop.value_ptr.* = if (entry.data.maybe_node.unwrap()) |value|
-                        try Value.fromNode(gpa, tree, value)
+                        try .fromNode(gpa, tree, value)
                     else
                         .empty;
                 }
 
-                return Value{ .map = out_map };
+                return .{ .map = out_map };
             },
             .list_empty => {
-                return Value{ .list = &.{} };
+                return .{ .list = &.{} };
             },
             .list_one => {
                 const value_index = tree.nodeData(node_index).node;
                 const out_list = try gpa.alloc(Value, 1);
                 const value = try Value.fromNode(gpa, tree, value_index);
                 out_list[0] = value;
-                return Value{ .list = out_list };
+                return .{ .list = out_list };
             },
             .list_two => {
                 const list = tree.nodeData(node_index).list;
@@ -568,7 +568,7 @@ pub const Value = union(enum) {
                 for (out_list, &[2]Node.Index{ list.el1, list.el2 }) |*out, value_index| {
                     out.* = try Value.fromNode(gpa, tree, value_index);
                 }
-                return Value{ .list = out_list };
+                return .{ .list = out_list };
             },
             .list_many => {
                 const extra_index = tree.nodeData(node_index).extra;
@@ -586,15 +586,15 @@ pub const Value = union(enum) {
                     out_list.appendAssumeCapacity(value);
                 }
 
-                return Value{ .list = try out_list.toOwnedSlice(gpa) };
+                return .{ .list = try out_list.toOwnedSlice(gpa) };
             },
             .string_value => {
                 const raw = tree.nodeData(node_index).string.slice(tree);
-                return Value{ .scalar = try gpa.dupe(u8, raw) };
+                return .{ .scalar = try gpa.dupe(u8, raw) };
             },
             .value => {
                 const raw = tree.nodeScope(node_index).rawString(tree);
-                return Value{ .scalar = try gpa.dupe(u8, raw) };
+                return .{ .scalar = try gpa.dupe(u8, raw) };
             },
         }
     }
@@ -605,37 +605,37 @@ pub const Value = union(enum) {
             .int,
             .comptime_float,
             .float,
-            => return Value{ .scalar = try std.fmt.allocPrint(arena, "{d}", .{input}) },
+            => return .{ .scalar = try std.fmt.allocPrint(arena, "{d}", .{input}) },
 
             .@"struct" => |info| if (info.is_tuple) {
                 var list: std.ArrayListUnmanaged(Value) = .empty;
-                try list.ensureTotalCapacityPrecise(arena, info.fields.len);
+                try list.ensureTotalCapacityPrecise(arena, info.field_names.len);
 
-                inline for (info.fields) |field| {
-                    if (try encode(arena, @field(input, field.name))) |value| {
+                inline for (info.field_names) |field| {
+                    if (try encode(arena, @field(input, field))) |value| {
                         list.appendAssumeCapacity(value);
                     }
                 }
 
-                return Value{ .list = try list.toOwnedSlice(arena) };
+                return .{ .list = try list.toOwnedSlice(arena) };
             } else {
                 var map: Map = .empty;
-                try map.ensureTotalCapacity(arena, info.fields.len);
+                try map.ensureTotalCapacity(arena, info.field_names.len);
 
-                inline for (info.fields) |field| {
-                    if (try encode(arena, @field(input, field.name))) |value| {
-                        const key = try arena.dupe(u8, field.name);
+                inline for (info.field_names) |field| {
+                    if (try encode(arena, @field(input, field))) |value| {
+                        const key = try arena.dupe(u8, field);
                         map.putAssumeCapacityNoClobber(key, value);
                     }
                 }
 
-                return Value{ .map = map };
+                return .{ .map = map };
             },
 
             .@"union" => |info| if (info.tag_type) |tag_type| {
-                inline for (info.fields) |field| {
-                    if (@field(tag_type, field.name) == input) {
-                        return try encode(arena, @field(input, field.name));
+                inline for (info.field_names) |field| {
+                    if (@field(tag_type, field) == input) {
+                        return try encode(arena, @field(input, field));
                     }
                 } else unreachable;
             } else return error.UntaggedUnion,
@@ -654,7 +654,7 @@ pub const Value = union(enum) {
                 },
                 .slice => {
                     if (info.child == u8) {
-                        return Value{ .scalar = try arena.dupe(u8, input) };
+                        return .{ .scalar = try arena.dupe(u8, input) };
                     }
 
                     var list: std.ArrayListUnmanaged(Value) = .empty;
@@ -669,7 +669,7 @@ pub const Value = union(enum) {
                         }
                     }
 
-                    return Value{ .list = try list.toOwnedSlice(arena) };
+                    return .{ .list = try list.toOwnedSlice(arena) };
                 },
                 else => {
                     @compileError("Unhandled type: " ++ @typeName(@TypeOf(input)));
@@ -681,8 +681,8 @@ pub const Value = union(enum) {
             .optional => return if (input) |val| encode(arena, val) else null,
 
             .null => return null,
-            .bool => return Value{ .boolean = input },
-            .@"enum" => return Value{ .scalar = try arena.dupe(u8, @tagName(input)) },
+            .bool => return .{ .boolean = input },
+            .@"enum" => return .{ .scalar = try arena.dupe(u8, @tagName(input)) },
 
             else => {
                 @compileError("Unhandled type: " ++ @typeName(@TypeOf(input)));

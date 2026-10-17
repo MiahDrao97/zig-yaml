@@ -28,9 +28,7 @@ string_bytes: std.ArrayListUnmanaged(u8) = .empty,
 errors: ErrorBundle.Wip,
 
 pub fn init(gpa: Allocator, source: []const u8) Allocator.Error!Parser {
-    var self: Parser = .{ .source = source, .errors = undefined };
-    try self.errors.init(gpa);
-    return self;
+    return .{ .source = source, .errors = try .init(gpa) };
 }
 
 pub fn deinit(self: *Parser, gpa: Allocator) void {
@@ -78,7 +76,7 @@ pub fn parse(self: *Parser, gpa: Allocator) ParseError!void {
         self.eatCommentsAndSpace(&.{});
         const tok = self.token_it.next() orelse break;
 
-        log.debug("(main) next {s}@{d}", .{ @tagName(tok.id), @intFromEnum(self.token_it.pos) - 1 });
+        log.debug("(main) next {s}@{d}", .{ @tagName(tok.id), @backingInt(self.token_it.pos) - 1 });
 
         switch (tok.id) {
             .eof => break,
@@ -106,12 +104,11 @@ fn addString(self: *Parser, gpa: Allocator, string: []const u8) Allocator.Error!
     const index: u32 = @intCast(self.string_bytes.items.len);
     try self.string_bytes.ensureUnusedCapacity(gpa, string.len);
     self.string_bytes.appendSliceAssumeCapacity(string);
-    return .{ .index = @enumFromInt(index), .len = @intCast(string.len) };
+    return .{ .index = @fromBackingInt(@intCast(index)), .len = @intCast(string.len) };
 }
 
 fn addExtra(self: *Parser, gpa: Allocator, extra: anytype) Allocator.Error!u32 {
-    const fields = std.meta.fields(@TypeOf(extra));
-    try self.extra.ensureUnusedCapacity(gpa, fields.len);
+    try self.extra.ensureUnusedCapacity(gpa, Tree.fieldNames(@TypeOf(extra)).len);
     return self.addExtraAssumeCapacity(extra);
 }
 
@@ -121,15 +118,15 @@ fn addExtraAssumeCapacity(self: *Parser, extra: anytype) u32 {
     return result;
 }
 
-fn payloadToExtraItems(data: anytype) [@typeInfo(@TypeOf(data)).@"struct".fields.len]u32 {
-    const fields = @typeInfo(@TypeOf(data)).@"struct".fields;
-    var result: [fields.len]u32 = undefined;
-    inline for (&result, fields) |*val, field| {
-        val.* = switch (field.type) {
-            u32 => @field(data, field.name),
-            i32 => @bitCast(@field(data, field.name)),
-            Node.Index, Node.OptionalIndex, Token.Index => @intFromEnum(@field(data, field.name)),
-            else => @compileError("bad field type: " ++ @typeName(field.type)),
+fn payloadToExtraItems(data: anytype) [@typeInfo(@TypeOf(data)).@"struct".field_names.len]u32 {
+    const struct_info = @typeInfo(@TypeOf(data)).@"struct";
+    var result: [struct_info.field_names.len]u32 = undefined;
+    inline for (&result, struct_info.field_names, 0..) |*val, field, i| {
+        val.* = switch (struct_info.field_types[i]) {
+            u32 => @field(data, field),
+            i32 => @bitCast(@field(data, field)),
+            Node.Index, Node.OptionalIndex, Token.Index => @backingInt(@field(data, field)),
+            else => @compileError("bad field type: " ++ @typeName(struct_info.field_types[i])),
         };
     }
     return result;
@@ -223,10 +220,10 @@ fn doc(self: *Parser, gpa: Allocator) ParseError!Node.Index {
             if (!is_explicit) return error.UnexpectedToken;
             if (self.getCol(pos) > 0) return error.MalformedYaml;
             self.token_it.seekBy(-1);
-            break :footer @enumFromInt(@intFromEnum(pos) - 1);
+            break :footer @fromBackingInt(@intCast(@backingInt(pos) - 1));
         }
         if (self.eatToken(.eof, &.{})) |pos| {
-            break :footer @enumFromInt(@intFromEnum(pos) - 1);
+            break :footer @fromBackingInt(@intCast(@backingInt(pos) - 1));
         }
 
         return self.fail(gpa, self.token_it.pos, "expected end of document", .{});
@@ -250,7 +247,7 @@ fn doc(self: *Parser, gpa: Allocator) ParseError!Node.Index {
         },
     });
 
-    return @enumFromInt(node_index);
+    return @fromBackingInt(@intCast(node_index));
 }
 
 fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
@@ -301,11 +298,11 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         const value_index = try self.value(gpa);
 
         if (value_index.unwrap()) |v| {
-            const value_start = self.nodes.items(.scope)[@intFromEnum(v)].start;
+            const value_start = self.nodes.items(.scope)[@backingInt(v)].start;
             if (self.getCol(value_start) < self.getCol(key_pos)) {
                 return error.MalformedYaml;
             }
-            if (self.nodes.items(.tag)[@intFromEnum(v)] == .value) {
+            if (self.nodes.items(.tag)[@backingInt(v)] == .value) {
                 if (self.getCol(value_start) == self.getCol(key_pos)) {
                     return self.fail(gpa, value_start, "'value' in map should have more indentation than the 'key'", .{});
                 }
@@ -318,7 +315,7 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         });
     }
 
-    const node_end: Token.Index = @enumFromInt(@intFromEnum(self.token_it.pos) - 1);
+    const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
 
     log.debug("(map) end {s}@{d}", .{ @tagName(self.token(node_end).id), node_end });
 
@@ -351,15 +348,15 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         self.nodes.set(node_index, .{
             .tag = .map_many,
             .scope = scope,
-            .data = .{ .extra = @enumFromInt(extra_index) },
+            .data = .{ .extra = @fromBackingInt(@intCast(extra_index)) },
         });
     }
 
-    return @as(Node.Index, @enumFromInt(node_index)).toOptional();
+    return @as(Node.Index, @fromBackingInt(@intCast(node_index))).toOptional();
 }
 
 fn list(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
-    const node_index: Node.Index = @enumFromInt(try self.nodes.addOne(gpa));
+    const node_index: Node.Index = @fromBackingInt(@intCast(try self.nodes.addOne(gpa)));
     const node_start = self.token_it.pos;
 
     var values: std.ArrayListUnmanaged(List.Entry) = .empty;
@@ -393,7 +390,7 @@ fn list(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         try values.append(gpa, .{ .node = value_index.unwrap().? });
     }
 
-    const node_end: Token.Index = @enumFromInt(@intFromEnum(self.token_it.pos) - 1);
+    const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
 
     log.debug("(list) end {s}@{d}", .{ @tagName(self.token(node_end).id), node_end });
 
@@ -406,7 +403,7 @@ fn list(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
 }
 
 fn listBracketed(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
-    const node_index: Node.Index = @enumFromInt(try self.nodes.addOne(gpa));
+    const node_index: Node.Index = @fromBackingInt(@intCast(try self.nodes.addOne(gpa)));
     const node_start = self.token_it.pos;
 
     var values: std.ArrayListUnmanaged(List.Entry) = .empty;
@@ -457,7 +454,7 @@ fn encodeList(
     values: []const List.Entry,
     node_scope: Node.Scope,
 ) Allocator.Error!void {
-    const index = @intFromEnum(node_index);
+    const index = @backingInt(node_index);
     switch (values.len) {
         0 => {
             self.nodes.set(index, .{
@@ -496,27 +493,27 @@ fn encodeList(
             self.nodes.set(index, .{
                 .tag = .list_many,
                 .scope = node_scope,
-                .data = .{ .extra = @enumFromInt(extra_index) },
+                .data = .{ .extra = @fromBackingInt(@intCast(extra_index)) },
             });
         },
     }
 }
 
 fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
-    const node_index: Node.Index = @enumFromInt(try self.nodes.addOne(gpa));
+    const node_index: Node.Index = @fromBackingInt(@intCast(try self.nodes.addOne(gpa)));
     const node_start = self.token_it.pos;
 
     // TODO handle multiline strings in new block scope
     while (self.token_it.next()) |tok| {
         switch (tok.id) {
             .single_quoted => {
-                const node_end: Token.Index = @enumFromInt(@intFromEnum(self.token_it.pos) - 1);
+                const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
                 const raw = self.rawString(node_start, node_end);
                 log.debug("(leaf) {s}", .{raw});
                 assert(raw.len > 0);
                 const string = try self.parseSingleQuoted(gpa, raw);
 
-                self.nodes.set(@intFromEnum(node_index), .{
+                self.nodes.set(@backingInt(node_index), .{
                     .tag = .string_value,
                     .scope = .{
                         .start = node_start,
@@ -528,13 +525,13 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
                 return node_index.toOptional();
             },
             .double_quoted => {
-                const node_end: Token.Index = @enumFromInt(@intFromEnum(self.token_it.pos) - 1);
+                const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
                 const raw = self.rawString(node_start, node_end);
                 log.debug("(leaf) {s}", .{raw});
                 assert(raw.len > 0);
                 const string = try self.parseDoubleQuoted(gpa, raw);
 
-                self.nodes.set(@intFromEnum(node_index), .{
+                self.nodes.set(@backingInt(node_index), .{
                     .tag = .string_value,
                     .scope = .{
                         .start = node_start,
@@ -549,8 +546,8 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
                 // unquoted values can contain dashes
             },
             .space => {
-                const trailing: u32 = @intFromEnum(self.token_it.pos) - 2;
-                const current_line: usize = self.getLine(@enumFromInt(trailing));
+                const trailing: u32 = @backingInt(self.token_it.pos) - 2;
+                const current_line: usize = self.getLine(@fromBackingInt(@intCast(trailing)));
                 self.eatCommentsAndSpace(&.{});
                 if (self.token_it.peek()) |peek| {
                     const same_line: bool = self.getLine(self.token_it.pos) == current_line;
@@ -559,9 +556,9 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
                         .seq_item_ind, .doc_start => true,
                         else => false,
                     })) {
-                        const node_end: Token.Index = @enumFromInt(trailing);
+                        const node_end: Token.Index = @fromBackingInt(@intCast(trailing));
                         log.debug("(leaf) {s}", .{self.rawString(node_start, node_end)});
-                        self.nodes.set(@intFromEnum(node_index), .{
+                        self.nodes.set(@backingInt(node_index), .{
                             .tag = .value,
                             .scope = .{
                                 .start = node_start,
@@ -575,9 +572,9 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
             },
             else => {
                 self.token_it.seekBy(-1);
-                const node_end: Token.Index = @enumFromInt(@intFromEnum(self.token_it.pos) - 1);
+                const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
                 log.debug("(leaf) {s}", .{self.rawString(node_start, node_end)});
-                self.nodes.set(@intFromEnum(node_index), .{
+                self.nodes.set(@backingInt(node_index), .{
                     .tag = .value,
                     .scope = .{
                         .start = node_start,
@@ -635,11 +632,11 @@ fn expectToken(self: *Parser, id: Token.Id, comptime exclusions: []const Token.I
 }
 
 fn getLine(self: *Parser, index: Token.Index) usize {
-    return self.tokens.items(.line_col)[@intFromEnum(index)].line;
+    return self.tokens.items(.line_col)[@backingInt(index)].line;
 }
 
 fn getCol(self: *Parser, index: Token.Index) usize {
-    return self.tokens.items(.line_col)[@intFromEnum(index)].col;
+    return self.tokens.items(.line_col)[@backingInt(index)].col;
 }
 
 fn parseSingleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!String {
@@ -648,7 +645,7 @@ fn parseSingleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!
 
     try self.string_bytes.ensureUnusedCapacity(gpa, raw_no_quotes.len);
     var string: String = .{
-        .index = @enumFromInt(@as(u32, @intCast(self.string_bytes.items.len))),
+        .index = @fromBackingInt(@intCast(@as(u32, @intCast(self.string_bytes.items.len)))),
         .len = 0,
     };
 
@@ -691,7 +688,7 @@ fn parseDoubleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!
 
     try self.string_bytes.ensureUnusedCapacity(gpa, raw_no_quotes.len);
     var string: String = .{
-        .index = @enumFromInt(@as(u32, @intCast(self.string_bytes.items.len))),
+        .index = @fromBackingInt(@intCast(@as(u32, @intCast(self.string_bytes.items.len)))),
         .len = 0,
     };
 
@@ -745,11 +742,11 @@ fn rawString(self: Parser, start: Token.Index, end: Token.Index) []const u8 {
 }
 
 fn token(self: Parser, index: Token.Index) Token {
-    return self.tokens.items(.token)[@intFromEnum(index)];
+    return self.tokens.items(.token)[@backingInt(index)];
 }
 
 fn fail(self: *Parser, gpa: Allocator, token_index: Token.Index, comptime format: []const u8, args: anytype) ParseError {
-    const line_col = self.tokens.items(.line_col)[@intFromEnum(token_index)];
+    const line_col = self.tokens.items(.line_col)[@backingInt(token_index)];
     const msg = try std.fmt.allocPrint(gpa, format, args);
     defer gpa.free(msg);
     const line_info = getLineInfo(self.source, line_col);

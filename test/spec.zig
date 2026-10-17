@@ -11,7 +11,7 @@ const TestCaseMap = std.array_hash_map.String(Testcase);
 pub const base_id: Step.Id = .custom;
 
 step: Step,
-output_file: std.Build.GeneratedFile,
+output_file: std.Build.Configuration.GeneratedFileIndex,
 
 const test_filename = "yaml_test_suite.zig";
 
@@ -63,17 +63,16 @@ const preamble =
 ;
 
 pub fn create(owner: *std.Build) *SpecTest {
-    const spec_test = owner.allocator.create(SpecTest) catch @panic("OOM");
-
-    spec_test.* = .{
-        .step = Step.init(.{ .id = base_id, .name = "yaml-test-generate", .owner = owner, .makeFn = make }),
-        .output_file = std.Build.GeneratedFile{ .step = &spec_test.step },
-    };
+    const spec_test: *SpecTest = owner.allocator.create(SpecTest) catch @panic("OOM");
+    spec_test.step = owner.step("yaml-test-generate", "Generate a test yaml file").*;
+    spec_test.output_file = owner.graph.addGeneratedFile(&spec_test.step);
     return spec_test;
 }
 
 pub fn path(spec_test: *SpecTest) std.Build.LazyPath {
-    return std.Build.LazyPath{ .generated = .{ .file = &spec_test.output_file } };
+    return .{
+        .generated = .{ .index = spec_test.output_file },
+    };
 }
 
 const Testcase = struct {
