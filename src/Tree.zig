@@ -23,35 +23,36 @@ pub fn deinit(self: *Tree, gpa: Allocator) void {
 }
 
 pub fn nodeTag(tree: Tree, node: Node.Index) Node.Tag {
-    return tree.nodes.items(.tag)[@intFromEnum(node)];
+    return tree.nodes.items(.tag)[@backingInt(node)];
 }
 
 pub fn nodeData(tree: Tree, node: Node.Index) Node.Data {
-    return tree.nodes.items(.data)[@intFromEnum(node)];
+    return tree.nodes.items(.data)[@backingInt(node)];
 }
 
 pub fn nodeScope(tree: Tree, node: Node.Index) Node.Scope {
-    return tree.nodes.items(.scope)[@intFromEnum(node)];
+    return tree.nodes.items(.scope)[@backingInt(node)];
 }
 
 /// Returns the requested data, as well as the new index which is at the start of the
 /// trailers for the object.
 pub fn extraData(tree: Tree, comptime T: type, index: Extra) struct { data: T, end: Extra } {
-    const fields = std.meta.fields(T);
-    var i = @intFromEnum(index);
+    const field_types: []const type = fieldTypes(T);
+    const field_names: []const [:0]const u8 = fieldNames(T);
+    var i: u32 = @backingInt(index);
     var result: T = undefined;
-    inline for (fields) |field| {
-        @field(result, field.name) = switch (field.type) {
+    inline for (field_types, field_names) |FieldType, field| {
+        @field(result, field) = switch (FieldType) {
             u32 => tree.extra[i],
             i32 => @bitCast(tree.extra[i]),
-            Node.Index, Node.OptionalIndex, Token.Index => @enumFromInt(tree.extra[i]),
-            else => @compileError("bad field type: " ++ @typeName(field.type)),
+            Node.Index, Node.OptionalIndex, Token.Index => @fromBackingInt(@intCast(tree.extra[i])),
+            else => @compileError("bad field type: " ++ @typeName(FieldType)),
         };
         i += 1;
     }
     return .{
         .data = result,
-        .end = @enumFromInt(i),
+        .end = @fromBackingInt(@intCast(i)),
     };
 }
 
@@ -76,7 +77,7 @@ pub fn rawString(self: Tree, start: Token.Index, end: Token.Index) []const u8 {
 }
 
 pub fn token(self: Tree, index: Token.Index) Token {
-    return self.tokens.items(.token)[@intFromEnum(index)];
+    return self.tokens.items(.token)[@backingInt(index)];
 }
 
 pub const Node = struct {
@@ -176,7 +177,7 @@ pub const Node = struct {
         _,
 
         pub fn toOptional(ind: Index) OptionalIndex {
-            const result: OptionalIndex = @enumFromInt(@intFromEnum(ind));
+            const result: OptionalIndex = @fromBackingInt(@intCast(@backingInt(ind)));
             assert(result != .none);
             return result;
         }
@@ -188,7 +189,7 @@ pub const Node = struct {
 
         pub fn unwrap(opt: OptionalIndex) ?Index {
             if (opt == .none) return null;
-            return @enumFromInt(@intFromEnum(opt));
+            return @fromBackingInt(@intCast(@backingInt(opt)));
         }
     };
 
@@ -235,7 +236,7 @@ pub const String = struct {
     };
 
     pub fn slice(str: String, tree: Tree) []const u8 {
-        return tree.string_bytes[@intFromEnum(str.index)..][0..str.len];
+        return tree.string_bytes[@backingInt(str.index)..][0..str.len];
     }
 };
 
@@ -250,6 +251,24 @@ pub const TokenWithLineCol = struct {
     token: Token,
     line_col: LineCol,
 };
+
+pub inline fn fieldNames(comptime T: type) []const [:0]const u8 {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |info| info.field_names,
+        .@"union" => |info| info.field_names,
+        .@"enum" => |info| info.field_names,
+        .error_set => |e| e.error_names.?, // must be non global error set
+        else => @compileError("Expected struct, union, error set or enum type, found '" ++ @typeName(T) ++ "'"),
+    };
+}
+
+pub inline fn fieldTypes(comptime T: type) []const type {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |info| info.field_types,
+        .@"union" => |info| info.field_types,
+        else => @compileError("Expected struct or union, found '" ++ @typeName(T) ++ "'"),
+    };
+}
 
 test {
     std.testing.refAllDecls(@This());
