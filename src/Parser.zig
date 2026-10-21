@@ -104,7 +104,7 @@ fn addString(self: *Parser, gpa: Allocator, string: []const u8) Allocator.Error!
     const index: u32 = @intCast(self.string_bytes.items.len);
     try self.string_bytes.ensureUnusedCapacity(gpa, string.len);
     self.string_bytes.appendSliceAssumeCapacity(string);
-    return .{ .index = @fromBackingInt(@intCast(index)), .len = @intCast(string.len) };
+    return .{ .index = @fromBackingInt(index), .len = @intCast(string.len) };
 }
 
 fn addExtra(self: *Parser, gpa: Allocator, extra: anytype) Allocator.Error!u32 {
@@ -220,10 +220,10 @@ fn doc(self: *Parser, gpa: Allocator) ParseError!Node.Index {
             if (!is_explicit) return error.UnexpectedToken;
             if (self.getCol(pos) > 0) return error.MalformedYaml;
             self.token_it.seekBy(-1);
-            break :footer @fromBackingInt(@intCast(@backingInt(pos) - 1));
+            break :footer @fromBackingInt(@backingInt(pos) - 1);
         }
         if (self.eatToken(.eof, &.{})) |pos| {
-            break :footer @fromBackingInt(@intCast(@backingInt(pos) - 1));
+            break :footer @fromBackingInt(@backingInt(pos) - 1);
         }
 
         return self.fail(gpa, self.token_it.pos, "expected end of document", .{});
@@ -315,7 +315,7 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         });
     }
 
-    const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
+    const node_end: Token.Index = @fromBackingInt(@backingInt(self.token_it.pos) - 1);
 
     log.debug("(map) end {s}@{d}", .{ @tagName(self.token(node_end).id), node_end });
 
@@ -348,7 +348,7 @@ fn map(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         self.nodes.set(node_index, .{
             .tag = .map_many,
             .scope = scope,
-            .data = .{ .extra = @fromBackingInt(@intCast(extra_index)) },
+            .data = .{ .extra = @fromBackingInt(extra_index) },
         });
     }
 
@@ -390,7 +390,7 @@ fn list(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
         try values.append(gpa, .{ .node = value_index.unwrap().? });
     }
 
-    const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
+    const node_end: Token.Index = @fromBackingInt(@backingInt(self.token_it.pos) - 1);
 
     log.debug("(list) end {s}@{d}", .{ @tagName(self.token(node_end).id), node_end });
 
@@ -493,7 +493,7 @@ fn encodeList(
             self.nodes.set(index, .{
                 .tag = .list_many,
                 .scope = node_scope,
-                .data = .{ .extra = @fromBackingInt(@intCast(extra_index)) },
+                .data = .{ .extra = @fromBackingInt(extra_index) },
             });
         },
     }
@@ -507,7 +507,7 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
     while (self.token_it.next()) |tok| {
         switch (tok.id) {
             .single_quoted => {
-                const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
+                const node_end: Token.Index = @fromBackingInt(@backingInt(self.token_it.pos) - 1);
                 const raw = self.rawString(node_start, node_end);
                 log.debug("(leaf) {s}", .{raw});
                 assert(raw.len > 0);
@@ -525,7 +525,7 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
                 return node_index.toOptional();
             },
             .double_quoted => {
-                const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
+                const node_end: Token.Index = @fromBackingInt(@backingInt(self.token_it.pos) - 1);
                 const raw = self.rawString(node_start, node_end);
                 log.debug("(leaf) {s}", .{raw});
                 assert(raw.len > 0);
@@ -547,7 +547,7 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
             },
             .space => {
                 const trailing: u32 = @backingInt(self.token_it.pos) - 2;
-                const current_line: usize = self.getLine(@fromBackingInt(@intCast(trailing)));
+                const current_line: usize = self.getLine(@fromBackingInt(trailing));
                 self.eatCommentsAndSpace(&.{});
                 if (self.token_it.peek()) |peek| {
                     const same_line: bool = self.getLine(self.token_it.pos) == current_line;
@@ -556,7 +556,7 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
                         .seq_item_ind, .doc_start => true,
                         else => false,
                     })) {
-                        const node_end: Token.Index = @fromBackingInt(@intCast(trailing));
+                        const node_end: Token.Index = @fromBackingInt(trailing);
                         log.debug("(leaf) {s}", .{self.rawString(node_start, node_end)});
                         self.nodes.set(@backingInt(node_index), .{
                             .tag = .value,
@@ -572,7 +572,7 @@ fn leafValue(self: *Parser, gpa: Allocator) ParseError!Node.OptionalIndex {
             },
             else => {
                 self.token_it.seekBy(-1);
-                const node_end: Token.Index = @fromBackingInt(@intCast(@backingInt(self.token_it.pos) - 1));
+                const node_end: Token.Index = @fromBackingInt(@backingInt(self.token_it.pos) - 1);
                 log.debug("(leaf) {s}", .{self.rawString(node_start, node_end)});
                 self.nodes.set(@backingInt(node_index), .{
                     .tag = .value,
@@ -645,7 +645,7 @@ fn parseSingleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!
 
     try self.string_bytes.ensureUnusedCapacity(gpa, raw_no_quotes.len);
     var string: String = .{
-        .index = @fromBackingInt(@intCast(@as(u32, @intCast(self.string_bytes.items.len)))),
+        .index = @fromBackingInt(@intCast(self.string_bytes.items.len)),
         .len = 0,
     };
 
@@ -688,7 +688,7 @@ fn parseDoubleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!
 
     try self.string_bytes.ensureUnusedCapacity(gpa, raw_no_quotes.len);
     var string: String = .{
-        .index = @fromBackingInt(@intCast(@as(u32, @intCast(self.string_bytes.items.len)))),
+        .index = @fromBackingInt(@intCast(self.string_bytes.items.len)),
         .len = 0,
     };
 

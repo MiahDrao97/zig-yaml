@@ -52,17 +52,17 @@ pub const Token = struct {
 
 pub const TokenIterator = struct {
     buffer: []Token,
-    pos: Token.Index = @fromBackingInt(@intCast(0)),
+    pos: Token.Index = @fromBackingInt(0),
 
     pub fn next(self: *TokenIterator) ?Token {
         const token = self.peek() orelse return null;
-        self.pos = @fromBackingInt(@intCast(@backingInt(self.pos) + 1));
+        self.pos = @fromBackingInt(@backingInt(self.pos) + 1);
         return token;
     }
 
     pub fn nextPtr(self: *TokenIterator) ?*Token {
         const token = self.peekPtr() orelse return null;
-        self.pos = @fromBackingInt(@intCast(@backingInt(self.pos) + 1));
+        self.pos = @fromBackingInt(@backingInt(self.pos) + 1);
         return token;
     }
 
@@ -79,7 +79,7 @@ pub const TokenIterator = struct {
     }
 
     pub fn reset(self: *TokenIterator) void {
-        self.pos = @fromBackingInt(@intCast(0));
+        self.pos = @fromBackingInt(0);
     }
 
     pub fn seekTo(self: *TokenIterator, pos: Token.Index) void {
@@ -87,13 +87,13 @@ pub const TokenIterator = struct {
     }
 
     pub fn seekBy(self: *TokenIterator, offset: isize) void {
-        var pos = @backingInt(self.pos);
+        var pos: u32 = @backingInt(self.pos);
         if (offset < 0) {
             pos -|= @intCast(@abs(offset));
         } else {
             pos +|= @intCast(@as(usize, @bitCast(offset)));
         }
-        self.pos = @fromBackingInt(@intCast(pos));
+        self.pos = @fromBackingInt(pos);
     }
 };
 
